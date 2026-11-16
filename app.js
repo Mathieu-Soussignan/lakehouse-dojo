@@ -262,20 +262,50 @@
   }
 
   /* ---------- flashcards ---------- */
-  let F = null;
+  let F = null, fcMod = 'due';
+  function buildDeck(filter) {
+    const all = allCards();
+    if (filter === 'track') { const ms = D.tracks[curTrack()].mods; return shuffle(all.filter(c => ms.includes(c.m.id))); }
+    if (filter === 'all') return shuffle(all);
+    if (mod(filter)) return all.filter(c => c.m.id === filter);
+    return shuffle(dueCards()).slice(0, 20);
+  }
   function cardsView() {
-    if (!F) F = { list: shuffle(dueCards()).slice(0, 20), i: 0, back: false };
-    const head = '<div class="head"><h1>Flashcards</h1><p class="muted">Une carte sue revient plus tard, une carte ratée revient tout de suite. ' + anchored() + ' cartes ancrées sur ' + allCards().length + '.</p></div>';
+    if (!F) F = { list: buildDeck(fcMod), i: 0, back: false };
+    const total = allCards().length, due = dueCards().length, anc = anchored(), learning = Object.values(S.cards).filter(c => c.b === 1).length;
+    const head = '<div class="head"><h1>Flashcards · Répétition espacée</h1><p class="muted">Système Leitner en 5 boîtes : une carte sue revient plus tard (1, 3, 7, 14, 30 jours), une carte à revoir revient dès la prochaine série.</p></div>' +
+      '<section class="panel"><div class="fc-kpis">' +
+      '<div class="fc-kpi"><span class="fine">À réviser aujourd\'hui</span><b>' + due + '</b><span class="fine">cartes arrivées à échéance</span></div>' +
+      '<div class="fc-kpi"><span class="fine">En apprentissage</span><b>' + learning + '</b><span class="fine">boîte 1 (rappel à J+1)</span></div>' +
+      '<div class="fc-kpi"><span class="fine">Ancrées (mémoire longue)</span><b style="color:var(--ok)">' + anc + ' / ' + total + '</b><span class="fine">boîtes 2 à 5 (+2 XP / carte)</span></div>' +
+      '</div><div class="hstack between" style="margin-top:4px"><div class="seg">' +
+      [['due', 'À réviser (' + due + ')'], ['track', 'Mon parcours'], ['all', 'Toutes (' + total + ')']].map(([k, lbl]) => '<button data-fc="' + k + '" class="' + (fcMod === k ? 'on' : '') + '">' + lbl + '</button>').join('') +
+      '</div><select id="fc-mod" aria-label="Filtrer par module" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)"><option value="">Filtrer par module…</option>' +
+      D.modules.map((m, idx) => '<option value="' + m.id + '"' + (fcMod === m.id ? ' selected' : '') + '>' + (idx + 1) + '. ' + esc(m.title) + ' (' + m.cards.length + ')</option>').join('') +
+      '</select></div></section>';
     if (F.i >= F.list.length) {
-      const left = dueCards().length; F = null;
-      return head + '<section class="panel"><h2>' + (left ? 'Série terminée' : 'Rien à réviser pour l\'instant') + '</h2><p class="muted">' + (left ? 'Il reste ' + left + ' cartes à voir.' : 'Reviens demain : dix minutes par jour valent mieux qu\'une heure par semaine.') + '</p><div>' +
-        (left ? '<button id="again" class="b-primary">Continuer</button>' : '<a class="btn" href="#parcours">Aller au parcours</a>') + '</div></section>';
+      const left = dueCards().length;
+      return head + '<section class="panel"><h2>' + (left ? 'Série terminée' : 'Tu es à jour sur tes révisions !') + '</h2><p class="muted">' +
+        (left ? 'Il reste ' + left + ' carte(s) arrivée(s) à échéance aujourd\'hui.' : 'Toutes les cartes dues aujourd\'hui ont été révisées. Tu peux lancer une série libre sur ton parcours ou un module spécifique.') +
+        '</p><div class="hstack"><button id="again" class="b-primary">' + (left ? 'Série suivante (' + Math.min(20, left) + ' cartes)' : 'Refaire une série libre') + '</button><a class="btn" href="#parcours">Retour au parcours</a></div></section>';
     }
-    const c = F.list[F.i];
-    return head + '<p class="crumb">Carte ' + (F.i + 1) + ' sur ' + F.list.length + ' · ' + esc(c.m.title) + '</p>' +
-      '<button class="flip' + (F.back ? ' back' : '') + '" id="flip" aria-label="Retourner la carte"><span class="flip-in"><span class="face"><span class="eyebrow">Question</span>' + esc(c.q) + '</span><span class="face b"><span class="eyebrow">Réponse</span>' + esc(c.a) + '</span></span></button>' +
-      '<div class="hstack">' + (F.back ? '<button data-grade="0">À revoir</button><button data-grade="1" class="b-primary">Je savais</button>' : '<button id="show" class="b-primary">Voir la réponse</button>') +
-      '<span class="fine">Espace pour retourner, 1 ou 2 pour noter.</span></div>';
+    const c = F.list[F.i], st = S.cards[c.id] || { b: 0 }, b = st.b || 0, nextDays = LEITNER[Math.min(b + 1, 5)];
+    const dots = '<span class="fc-boxes" title="Boîte Leitner ' + b + ' / 5">' + [1, 2, 3, 4, 5].map(k => '<i class="' + (k <= b ? 'on' : '') + '"></i>').join('') + ' <small>Boîte ' + b + '/5</small></span>';
+    return head +
+      '<div class="head"><div class="hstack between"><span class="crumb">Carte <b>' + (F.i + 1) + '</b> sur <b>' + F.list.length + '</b> · <a href="#module-' + c.m.id + '">Module ' + num(c.m) + ' : ' + esc(c.m.title) + '</a></span>' + dots + '</div>' +
+      '<div class="bar"><i style="width:' + Math.round(100 * (F.i + (F.back ? 1 : 0.35)) / F.list.length) + '%"></i></div></div>' +
+      '<button class="flip' + (F.back ? ' back' : '') + '" id="flip" aria-label="Retourner la carte"><span class="flip-in">' +
+      '<span class="face"><span class="fc-top"><span class="pill">Question · ' + esc(c.m.title) + '</span><span>' + (F.i + 1) + ' / ' + F.list.length + '</span></span>' +
+      '<span class="fc-mid"><span class="eyebrow">Question</span><span class="fc-q">' + esc(c.q) + '</span></span>' +
+      '<span class="fc-bot"><span>Réfléchis avant de retourner</span><span>Cliquer ou <kbd>Espace</kbd> pour retourner ↻</span></span></span>' +
+      '<span class="face b"><span class="fc-top"><span class="pill ok">Réponse · ' + esc(c.m.title) + '</span><span>' + (F.i + 1) + ' / ' + F.list.length + '</span></span>' +
+      '<span class="fc-mid"><span class="eyebrow">Réponse à retenir</span><span class="fc-a">' + esc(c.a) + '</span></span>' +
+      '<span class="fc-bot"><span>Évalue ta maîtrise ci-dessous</span><span><kbd>1</kbd> À revoir · <kbd>2</kbd> Je maîtrise</span></span></span>' +
+      '</span></button>' +
+      (F.back
+        ? '<div class="fc-act"><button data-grade="0" class="b-warn"><b>↻ À revoir</b><small>Retour en boîte 0 · Prochain rappel immédiat (<kbd>1</kbd>)</small></button>' +
+          '<button data-grade="1" class="b-primary"><b>✓ Je savais</b><small>Passe en boîte ' + Math.min(b + 1, 5) + ' · Rappel dans ' + nextDays + ' jour' + (nextDays > 1 ? 's' : '') + ' (<kbd>2</kbd>)</small></button></div>'
+        : '<div class="hstack between"><button id="show" class="b-primary" style="flex:1;padding:12px 18px">Voir la réponse <kbd>Espace</kbd></button></div>');
   }
   function labsView() {
     return '<div class="head"><h1>Labs Databricks</h1><p class="muted">À réaliser dans Databricks Free Edition (gratuite et sans carte bancaire) ou sur un workspace de formation. Télécharge les notebooks prêts à l\'emploi (<code>.ipynb</code>) avec rappels de cours, énoncés et solutions.</p></div>' +
@@ -354,6 +384,7 @@
     if (t.id === 'clear-peer') { S.comparePeer = null; save(); render(); return; }
     if (d.peer != null) { const idx = +d.peer; S.comparePeer = S.comparePeer === idx ? null : idx; save(); render(); return; }
     if (d.track) { S.track = d.track; save(); render(); return; }
+    if (d.fc) { fcMod = d.fc; F = { list: buildDeck(fcMod), i: 0, back: false }; render(); return; }
     if (d.nb) { window.Extras.downloadNotebook(d.nb); return; }
     if (d.copy != null) { const pre = $('code' + d.copy); copyText(pre.textContent, t, 'Copier'); const r = document.createRange(); r.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(r); return; }
     if (t.id === 'export') { const md = notesMd(); $('export-out').innerHTML = '<textarea id="export-ta" readonly aria-label="Notes au format Markdown"></textarea>'; $('export-ta').value = md; $('export-ta').select(); copyText(md, t, 'Copier mes notes'); return; }
@@ -370,7 +401,7 @@
     else if (t.id === 'retry') quizStart(Q.id);
     else if (t.id === 'flip' || t.id === 'show') F.back = t.id === 'show' ? true : !F.back;
     else if (d.grade != null) grade(d.grade === '1');
-    else if (t.id === 'again') F = null;
+    else if (t.id === 'again') { if (fcMod === 'due' && !dueCards().length) fcMod = 'all'; F = { list: buildDeck(fcMod), i: 0, back: false }; }
     else return;
     save(); render(); reward();
   });
@@ -385,6 +416,7 @@
   });
   document.addEventListener('change', e => {
     if (e.target.id === 'load-file' && e.target.files[0]) { window.Extras.importProgress(e.target.files[0]); e.target.value = ''; return; }
+    if (e.target.id === 'fc-mod' && e.target.value) { fcMod = e.target.value; F = { list: buildDeck(fcMod), i: 0, back: false }; render(); return; }
     const d = e.target.dataset;
     if (d.ask) { S.asked[d.ask] = e.target.checked; save(); }
     if (d.projet != null) { S.projet[d.projet] = e.target.checked; save(); }
