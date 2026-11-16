@@ -154,7 +154,7 @@
       const CELLS = [
         ['sql', 'CREATE SCHEMA IF NOT EXISTS dojo', s => { s.schema = true; return 'OK'; }],
         ['python', 'bronze = spark.read.table("samples.nyctaxi.trips")\nbronze.write.mode("overwrite").saveAsTable("dojo.courses_bronze")', s => { if (!s.schema) throw 'SCHEMA_NOT_FOUND : le schéma dojo n\'existe pas.'; s.vBronze = true; s.tBronze = true; return 'Table dojo.courses_bronze créée.'; }],
-        ['python', 'silver = bronze.filter("trip_distance > 0")\nsilver.write.mode("overwrite").saveAsTable("dojo.courses_silver")', s => { if (!s.vBronze) throw 'NameError : name \'bronze\' is not defined'; s.tSilver = true; return 'Table dojo.courses_silver créée.'; }],
+        ['python', 'from pyspark.sql import functions as F\nsilver = (bronze.filter("trip_distance > 0")\n  .withColumn("jour", F.to_date("tpep_pickup_datetime")))\nsilver.write.mode("overwrite").saveAsTable("dojo.courses_silver")', s => { if (!s.vBronze) throw 'NameError : name \'bronze\' is not defined'; s.tSilver = true; return 'Table dojo.courses_silver créée (avec colonne jour).'; }],
         ['sql', 'SELECT jour, count(*) AS courses\nFROM dojo.courses_silver GROUP BY jour', s => { if (!s.tSilver) throw 'TABLE_OR_VIEW_NOT_FOUND : dojo.courses_silver'; return '<div class="bars"><i style="height:45%"></i><i style="height:70%"></i><i style="height:100%"></i><i style="height:60%"></i><i style="height:82%"></i></div>'; }],
         ['md', '# Pipeline courses\nBronze brut, Silver filtré, agrégat par jour.', () => '<b>Pipeline courses</b><br>Bronze brut, Silver filtré, agrégat par jour.']
       ];
@@ -505,6 +505,164 @@
         st.res = { errs, vm: n[0], dbu: n[1], cost: n[0] + n[1] * 0.484 };
         if (!errs.length && st.res.cost < 1.3) win();
         draw();
+      };
+      draw();
+    }
+  });
+
+  /* ---------- 13. Pipelines déclaratifs (Lakeflow / DLT) et Expectations ---------- */
+  SIMS.push({
+    id: 'dlt', mod: 'm7', title: 'Pipeline déclaratif et Expectations',
+    tag: 'Configure le comportement des règles de qualité (Tracer, DROP ROW, FAIL UPDATE) sur un flux Bronze → Silver.',
+    mission: 'Écarte les montants <= 0 (DROP ROW), garde mais trace les devises exotiques (WARN), et coupe tout si compte_id est NULL (FAIL UPDATE), puis valide un lot de 488 lignes.',
+    mount(root, win) {
+      const RULES = [
+        ['compte', 'compte_present', 'compte_id IS NOT NULL', 'Clé de compte absente (critique)'],
+        ['montant', 'montant_positif', 'montant > 0', '12 lignes à montant nul ou négatif'],
+        ['devise', 'devise_connue', 'devise IN (\'EUR\', \'USD\', \'GBP\')', '9 lignes en devise exotique (CHF/JPY)']
+      ];
+      const MODES = [['warn', 'Tracer (défaut)', ''], ['drop', 'DROP ROW', ' ON VIOLATION DROP ROW'], ['fail', 'FAIL UPDATE', ' ON VIOLATION FAIL UPDATE']];
+      const st = { compte: 'warn', montant: 'warn', devise: 'warn', nullRow: true, res: null };
+      const sqlClause = k => {
+        const r = RULES.find(x => x[0] === k), m = MODES.find(x => x[0] === st[k]);
+        return `  CONSTRAINT ${r[1]} EXPECT (${r[2]})${m[2]}`;
+      };
+      const draw = () => {
+        const sql = `CREATE OR REFRESH STREAMING TABLE silver_operations (\n${RULES.map(r => sqlClause(r[0])).join(',\n')}\n) AS SELECT * FROM STREAM(bronze_operations);`;
+        const r = st.res;
+        root.innerHTML = `
+          <div class="sim-cols">
+            <div class="ctrl">
+              <span class="zlabel">Règles d'Expectations sur silver_operations</span>
+              ${RULES.map(([k, name, cond, desc]) => `
+                <div>
+                  <label><b>${name}</b> · <small class="muted">${desc}</small></label>
+                  <div class="seg" style="margin-top:4px">${MODES.map(([m, lbl]) => `<button data-r="${k}" data-m="${m}" class="${st[k] === m ? 'on' : ''}">${lbl}</button>`).join('')}</div>
+                </div>`).join('')}
+              <label class="chk" style="margin-top:6px"><input type="checkbox" id="dlt-null"${st.nullRow ? ' checked' : ''}> Lot corrompu : 1 ligne arrive avec <code>compte_id = NULL</code></label>
+              <button class="b-primary" data-run="1">▶ Lancer la mise à jour du pipeline</button>
+            </div>
+            <div>
+              <span class="zlabel">Définition SQL générée (Lakeflow / DLT)</span>
+              <pre class="mini">${esc(sql)}</pre>
+              ${r ? (r.failed ? `<div class="result ko"><b>PIPELINE FAILED · Violation de contrainte</b><br>${esc(r.msg)}<br><small>0 ligne écrite dans <code>silver_operations</code> (atomicité garantie).</small></div>`
+                : `<div class="result ok"><b>Mise à jour réussie</b> · <b>${r.written} lignes</b> écrites dans <code>silver_operations</code> sur ${r.total} lues en Bronze.
+                  <ul>
+                    <li>Lignes écartées (DROP ROW) : <b>${r.dropped}</b></li>
+                    <li>Lignes conservées avec alerte qualité (WARN) : <b>${r.warned}</b></li>
+                  </ul></div>`)
+                : '<div class="sim-note">Lot entrant en Bronze : <b>500 lignes</b> (dont 12 avec <code>montant &lt;= 0</code> et 9 avec <code>devise = \'CHF\'</code>). Choisis la politique de chaque règle puis lance le pipeline.</div>'}
+            </div>
+          </div>`;
+      };
+      root.onchange = e => { if (e.target.id === 'dlt-null') { st.nullRow = e.target.checked; st.res = null; draw(); } };
+      root.onclick = e => {
+        const b = e.target.closest('button'); if (!b) return;
+        if (b.dataset.r) { st[b.dataset.r] = b.dataset.m; st.res = null; draw(); return; }
+        if (b.dataset.run) {
+          const violations = { compte: st.nullRow ? 1 : 0, montant: 12, devise: 9 };
+          const failedRule = RULES.find(([k]) => violations[k] > 0 && st[k] === 'fail');
+          if (failedRule) {
+            st.res = { failed: true, msg: `La règle "${failedRule[1]}" (${failedRule[2]}) a échoué sur ${violations[failedRule[0]]} ligne(s) avec ON VIOLATION FAIL UPDATE.${failedRule[0] === 'compte' ? ' Décoche la ligne corrompue en amont et relance !' : ''}` };
+          } else {
+            let dropped = 0, warned = 0;
+            RULES.forEach(([k]) => { if (st[k] === 'drop') dropped += violations[k]; else if (st[k] === 'warn') warned += violations[k]; });
+            const total = 500, written = total - dropped;
+            st.res = { failed: false, total, written, dropped, warned };
+            if (st.compte === 'fail' && st.montant === 'drop' && st.devise === 'warn' && !st.nullRow && written === 488) win();
+          }
+          draw();
+        }
+      };
+      draw();
+    }
+  });
+
+  /* ---------- 14. Diagnostic Spark UI : les 4 symptômes ---------- */
+  SIMS.push({
+    id: 'sparkui', mod: 'm10', title: 'Diagnostic Spark UI : les 4 symptômes',
+    tag: 'Inspecte les métriques de 4 jobs lents en production et prescris le bon remède.',
+    mission: 'Résous les 4 incidents de performance (Skew, Spill, Petits fichiers, Shuffle massif).',
+    mount(root, win) {
+      const CASES = [
+        {
+          id: 'skew', title: '1. Jointure interminable (199 tasks finies, 1 bloquée)',
+          symptom: 'Skew (déséquilibre de clé)',
+          metrics: [['Stage 3 · SortMergeJoin', '199 / 200 tasks terminées en 4 s'], ['Task #142 (en cours)', '22 min 15 s · 94 % des lignes (client_id = NULL)'], ['CPU du cluster (8 workers)', '1 cœur à 100 %, 31 cœurs à 0 % (inactifs)']],
+          before: '22 min 20 s', after: '14 s',
+          opts: [
+            ['Doubler la taille du cluster (8 → 16 workers)', false, 'Piège classique : ajouter des machines laisse 32 cœurs supplémentaires inactifs pendant qu\'une seule task traite toujours la même clé déséquilibrée.'],
+            ['Filtrer/isoler les clés NULL avant le join et activer AQE skew join', true, 'Exact ! En traitant les NULL à part (ou via le skew join d\'AQE qui découpe la partition géante), les 200 tasks terminent en 14 secondes.'],
+            ['Lancer VACUUM sur la table source', false, 'VACUUM ne supprime que les anciens fichiers non référencés ; il ne change pas la répartition des clés en mémoire.']
+          ]
+        },
+        {
+          id: 'spill', title: '2. Agrégation qui s\'effondre à mi-parcours',
+          symptom: 'Spill (débordement mémoire sur disque)',
+          metrics: [['Stage 2 · HashAggregate', 'Durée : 18 min · GC Time : 4 min'], ['Spill (Memory)', '112 GB'], ['Spill (Disk)', '48 GB écrits et relus sur le SSD local']],
+          before: '18 min 40 s', after: '1 min 10 s',
+          opts: [
+            ['Augmenter le nombre de partitions de shuffle / activer AQE auto-tuning ou choisir des VM à plus forte RAM par cœur', true, 'Exact ! Des partitions plus petites tiennent en RAM sans déborder sur le disque : le Spill tombe à 0 Go et le job est 15× plus rapide.'],
+            ['Ajouter df.cache() avant le groupBy', false, 'Au contraire : cache() occupe encore plus de mémoire RAM sur les exécuteurs et aggrave le Spill !'],
+            ['Convertir la requête en UDF Python', false, 'Une UDF Python sérialise chaque ligne hors de la JVM et dégrade encore davantage la mémoire et le CPU.']
+          ]
+        },
+        {
+          id: 'files', title: '3. Lecture de 5 Go qui met 9 minutes',
+          symptom: 'Petits fichiers (Small files problem)',
+          metrics: [['Stage 0 · Scan Parquet', 'Volume total lu : 5,2 GB'], ['Fichiers ouverts', '42 800 fichiers (taille moyenne : 124 KB)'], ['Temps passé à lister / ouvrir sur ADLS', '8 min 45 s (97 % du temps total)']],
+          before: '9 min 05 s', after: '9 s',
+          opts: [
+            ['Partitionner la table par heure et par client_id', false, 'Surtout pas : sur-partitionner est précisément ce qui a créé ces 42 800 minuscules fichiers !'],
+            ['Exécuter OPTIMIZE et utiliser Liquid Clustering (CLUSTER BY) / Predictive Optimization', true, 'Exact ! OPTIMIZE compacte les 42 800 petits fichiers en ~20 fichiers de 256 Mo ; la lecture passe de 9 minutes à 9 secondes.'],
+            ['Passer le cluster en mode Dedicated', false, 'Le mode d\'accès du cluster ne change pas le nombre d\'appels HTTP vers le stockage objet ADLS.']
+          ]
+        },
+        {
+          id: 'shuffle', title: '4. Jointure d\'une table de 600 Go avec un référentiel de 12 Mo',
+          symptom: 'Shuffle massif évitable',
+          metrics: [['Plan physique', 'SortMergeJoin (2 opérateurs Exchange)'], ['Shuffle Write / Read', '600 GB redistribués sur le réseau entre les workers'], ['Filtre WHERE pays = \'FR\'', 'Appliqué sur une UDF non poussée à la source']],
+          before: '14 min 30 s', after: '22 s',
+          opts: [
+            ['Remplacer l\'UDF par une expression native (pushdown) et diffuser la petite table (Broadcast Hash Join)', true, 'Exact ! Le filtre natif profite du data skipping à la source et le broadcast de la table de 12 Mo supprime totalement le shuffle des 600 Go.'],
+            ['Désactiver Photon', false, 'Photon accélère au contraire les scans et les jointures vectorisées.'],
+            ['Faire un SHALLOW CLONE de la table de 600 Go', false, 'Un clone pointe vers les mêmes fichiers et produira exactement le même plan d\'exécution.']
+          ]
+        }
+      ];
+      const st = { cur: 0, solved: {}, msg: {} };
+      const draw = () => {
+        const c = CASES[st.cur], ok = st.solved[c.id], m = st.msg[c.id];
+        root.innerHTML = `
+          <div class="seg">${CASES.map((x, i) => `<button data-c="${i}" class="${i === st.cur ? 'on' : ''}">${st.solved[x.id] ? '✓ ' : ''}${x.symptom.split(' ')[0]}</button>`).join('')}</div>
+          <div class="sim-cols">
+            <div>
+              <span class="zlabel">${esc(c.title)}</span>
+              <table class="t">${c.metrics.map(([k, v]) => `<tr><th>${esc(k)}</th><td><code>${esc(v)}</code></td></tr>`).join('')}</table>
+              <div class="meter" style="margin-top:10px">
+                <span>Durée observée : <b style="color:var(${ok ? '--ok' : '--bad'})">${ok ? c.after + ' (optimisé)' : c.before}</b></span>
+                <span>Cas résolus : <b>${Object.keys(st.solved).length} / 4</b></span>
+              </div>
+            </div>
+            <div class="ctrl">
+              <span class="zlabel">Quelle action prescris-tu ?</span>
+              ${c.opts.map(([lbl, isOk], idx) => `<button class="opt ${ok && isOk ? 'right' : ''}" data-o="${idx}">${esc(lbl)}</button>`).join('')}
+            </div>
+          </div>
+          ${m ? `<div class="result ${ok ? 'ok' : 'ko'}"><b>${ok ? 'Diagnostic validé · ' + c.symptom : 'Fausse piste'}</b><br>${esc(m)}</div>` : '<div class="sim-note">Lis les métriques de la Spark UI à gauche et choisis le levier adapté.</div>'}`;
+      };
+      root.onclick = e => {
+        const b = e.target.closest('button'); if (!b) return;
+        if (b.dataset.c != null) { st.cur = +b.dataset.c; draw(); return; }
+        if (b.dataset.o != null) {
+          const c = CASES[st.cur], [_, isOk, txt] = c.opts[+b.dataset.o];
+          st.msg[c.id] = txt;
+          if (isOk) {
+            st.solved[c.id] = true;
+            if (Object.keys(st.solved).length === CASES.length) win();
+          }
+          draw();
+        }
       };
       draw();
     }

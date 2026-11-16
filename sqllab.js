@@ -81,22 +81,27 @@
 
   /* ---------- comparaison ---------- */
   const keyOf = (row, fl) => row.filter((_, i) => !fl.includes(i)).map(v => v === null ? 'NULL' : typeof v === 'number' ? String(Math.round(v * 1e6) / 1e6) : String(v)).join(' | ');
-  const show = row => row.map(v => v === null ? 'NULL' : v).join(', ');
+  const miniTable = (cols, rows) => '<div class="grid-wrap" style="margin-top:6px;max-height:160px"><table class="grid"><thead><tr>' + cols.map(c => '<th>' + esc(c) + '</th>').join('') + '</tr></thead><tbody>' +
+    rows.slice(0, 3).map(r => '<tr>' + r.map(v => v === null ? '<td class="nul">NULL</td>' : '<td>' + esc(typeof v === 'number' && !Number.isInteger(v) ? v.toLocaleString('fr-FR', { maximumFractionDigits: 4 }) : v) + '</td>').join('') + '</tr>').join('') + '</tbody></table></div>';
   function compare(user, ref, o) {
     o = o || {};
-    if (user.cols.length !== ref.cols.length) return { ok: false, msg: 'Je m\'attends à <strong>' + ref.cols.length + ' colonne(s)</strong>, ta requête en renvoie <strong>' + user.cols.length + '</strong>.' };
+    if (user.cols.length !== ref.cols.length) return { ok: false, msg: 'Je m\'attends à <strong>' + ref.cols.length + ' colonne(s)</strong> (<code>' + esc(ref.cols.join(', ')) + '</code>), ta requête en renvoie <strong>' + user.cols.length + '</strong>.' };
     const fl = ref.types.map((t, i) => /Float|Decimal/.test(t) ? i : -1).filter(i => i >= 0), tol = o.tol || 0.005;
-    const grp = rs => { const m = new Map(); rs.forEach(r => { const k = keyOf(r, fl); (m.get(k) || m.set(k, []).get(k)).push(fl.map(i => r[i])); }); return m; };
+    const grp = rs => { const m = new Map(); rs.forEach(r => { const k = keyOf(r, fl); if (!m.has(k)) m.set(k, { fls: [], row: r }); m.get(k).fls.push(fl.map(i => r[i])); }); return m; };
     const gu = grp(user.rows), gr = grp(ref.rows), missing = [], extra = [];
-    gr.forEach((v, k) => { const u = gu.get(k); if (!u || u.length !== v.length) missing.push(k); else { const a = u.map(x => x.join()).sort(), b = v.map(x => x.join()).sort(); if (fl.length && v.some((vv, j) => vv.some((n, c) => Math.abs(n - u.slice().sort((p, q) => p[0] - q[0])[j][c]) > tol))) missing.push(k); } });
-    gu.forEach((v, k) => { if (!gr.has(k)) extra.push(k); });
+    gr.forEach((v, k) => {
+      const u = gu.get(k);
+      if (!u || u.fls.length !== v.fls.length) missing.push(v.row);
+      else if (fl.length && v.fls.some((vv, j) => vv.some((n, c) => Math.abs(n - u.fls.slice().sort((p, q) => p[0] - q[0])[j][c]) > tol))) { missing.push(v.row); extra.push(u.row); }
+    });
+    gu.forEach((v, k) => { if (!gr.has(k)) extra.push(v.row); });
     let order = true;
     if (o.ordered && !missing.length && !extra.length) order = user.rows.every((r, i) => keyOf(r, fl) === keyOf(ref.rows[i], fl));
     if (!missing.length && !extra.length && order && user.rows.length === ref.rows.length) return { ok: true };
-    if (!order) return { ok: false, msg: 'Les bonnes lignes sont là, mais pas <strong>dans le bon ordre</strong> : ajoute un ORDER BY.' };
+    if (!order) return { ok: false, msg: 'Les bonnes lignes sont là, mais pas <strong>dans le bon ordre</strong> : vérifie ton <code>ORDER BY</code>.' };
     let msg = user.rows.length === ref.rows.length ? 'Le nombre de lignes est bon (<strong>' + ref.rows.length + '</strong>) mais certaines valeurs diffèrent.' : 'Tu renvoies <strong>' + user.rows.length + ' ligne(s)</strong>, j\'en attends <strong>' + ref.rows.length + '</strong>.';
-    if (missing.length) msg += '<br>Attendu mais absent ou différent : <code>' + esc(missing.slice(0, 2).join(' ; ')) + '</code>';
-    if (extra.length) msg += '<br>Présent mais inattendu : <code>' + esc(extra.slice(0, 2).join(' ; ')) + '</code>';
+    if (missing.length) msg += '<br><b>Attendu (référence) mais absent ou différent :</b>' + miniTable(ref.cols, missing);
+    if (extra.length) msg += '<br><b>Présent dans ton résultat mais inattendu :</b>' + miniTable(user.cols, extra);
     return { ok: false, msg };
   }
   const sel = (cols, from) => 'SELECT ' + (cols ? cols.join(', ') : '*') + ' FROM ' + from;
@@ -266,8 +271,17 @@
     const showResult = (r, info) => {
       lastRes = r;
       const ch = r && chart(r);
-      res.innerHTML = '<div class="hstack between"><b>Résultat</b><span class="fine">' + (r ? r.rows.length.toLocaleString('fr-FR') + ' ligne(s) · ' : '') + info + '</span>' + (ch ? '<span class="seg"><button data-tab="table" class="' + (tab === 'table' ? 'on' : '') + '">Tableau</button><button data-tab="chart" class="' + (tab === 'chart' ? 'on' : '') + '">Graphique</button></span>' : '') + '</div>' + (r ? (tab === 'chart' && ch ? ch : grid(r)) : '<p class="muted">Aucune ligne à afficher.</p>');
+      res.innerHTML = '<div class="hstack between"><b>Résultat</b><span class="fine">' + (r ? r.rows.length.toLocaleString('fr-FR') + ' ligne(s) · ' : '') + info + '</span>' +
+        '<div class="hstack">' + (r && r.rows.length ? '<button class="small" id="dl-csv">⬇ CSV</button>' : '') +
+        (ch ? '<span class="seg"><button data-tab="table" class="' + (tab === 'table' ? 'on' : '') + '">Tableau</button><button data-tab="chart" class="' + (tab === 'chart' ? 'on' : '') + '">Graphique</button></span>' : '') + '</div></div>' +
+        (r ? (tab === 'chart' && ch ? ch : grid(r)) : '<p class="muted">Aucune ligne à afficher.</p>');
       res.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; showResult(r, info); });
+      const dl = $(res, '#dl-csv');
+      if (dl) dl.onclick = () => {
+        const csv = [r.cols.join(',')].concat(r.rows.map(row => row.map(v => v === null ? '' : typeof v === 'string' && /[,;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v).join(','))).join('\n');
+        const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = 'resultat-' + cur.id + '.csv';
+        document.body.appendChild(a); a.click(); a.remove();
+      };
     };
     async function run(silent) {
       if (E.state !== 'ready') return null;
@@ -298,12 +312,12 @@
         else {
           const gain = Math.round(m.xp * (1 - PENALTY[n])), first = LS.done[m.id] == null;
           if (first) { LS.done[m.id] = gain; ctx.save(); ctx.confetti(); ctx.reward(); }
-          const pyTitle = m.id === 'm7' ? 'Équivalent Databricks (MERGE)' : 'Équivalent PySpark';
+          const pyTitle = (m.id === 'm7' || m.id === 'm8') ? 'Équivalent Databricks (MERGE)' : 'Équivalent PySpark';
           ver.innerHTML = '<div class="note ok"><b>Mission réussie' + (first ? ' · +' + gain + ' XP' : ' (déjà validée)') + '</b>' + (out.extra ? '<p>' + out.extra + '</p>' : '') + (m.after ? '<p>' + m.after + '</p>' : '') + '</div>' +
             (m.followup ? '<div class="follow" id="follow"></div>' : '') + '<div id="flow"></div>' +
             '<details open><summary>' + pyTitle + '</summary><pre>' + esc(m.py) + '</pre></details>' +
             '<div class="hstack">' + (MS[MS.indexOf(m) + 1] ? '<a class="btn b-primary" href="#labo-' + MS[MS.indexOf(m) + 1].id + '">Mission suivante →</a>' : '<a class="btn b-primary" href="#accueil">Retour à l\'accueil</a>') + '</div>';
-          if (m.flow || m.id === 'm4' || m.id === 'm5') { const h = await flowHtml(); if (h) $(root, '#flow').innerHTML = h; }
+          if (m.flow || m.id === 'm4' || m.id === 'm5' || m.id === 'm9') { const h = await flowHtml(); if (h) $(root, '#flow').innerHTML = h; }
           if (m.followup) followup(m);
         }
       } catch (e) { ver.innerHTML = err(e); }

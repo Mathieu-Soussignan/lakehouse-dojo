@@ -95,9 +95,16 @@ label.chk{display:flex;gap:9px;align-items:flex-start;cursor:pointer} label.chk 
 .mcard{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:14px;align-items:center;text-decoration:none;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
 .mcard:hover{border-color:var(--lake)} .mcard .num{width:44px;height:44px;border-radius:50%;background:var(--sunken);display:grid;place-items:center;font:700 1.05rem var(--display)}
 .mcard.full .num{background:var(--ok);color:var(--surface)} .mcard small{display:block;color:var(--muted)}
+.mcard.dim,.stop.dim{opacity:.58} .mcard.dim:hover,.stop.dim:hover{opacity:1}
 .pips{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end} .pip{font-size:.7rem;font-weight:600;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
 .pip.on{background:var(--ok-soft);color:var(--ok);border-color:transparent}
 .list{display:flex;flex-direction:column;gap:10px}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:9px;overflow:hidden;align-self:flex-start} .seg button{border:0;border-radius:0;background:transparent} .seg button.on{background:var(--ink);color:var(--bg)}
+.ask-item{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}
+.ans-box{margin-left:24px;font-size:.92rem}
+.playbook{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--surface)}
+.playbook summary{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;color:var(--ink)}
+.pb-body{margin-top:10px;display:flex;flex-direction:column;gap:8px;font-size:.93rem}
 
 /* module */
 ul.pts,ol.pts{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:9px;max-width:75ch}
@@ -119,7 +126,6 @@ details summary{cursor:pointer;color:var(--lake);font-weight:600}
 .sim .sim-cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px} .sim .sim-cols.three{grid-template-columns:repeat(3,minmax(0,1fr))}
 .sim .sim-sub{border-top:1px solid var(--line);padding-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .sim .zlabel{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:8px}
-.sim .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden} .sim .seg button{border:0;border-radius:0;background:transparent} .sim .seg button.on{background:var(--ink);color:var(--bg)}
 .sim select,.sim input[type=number]{padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);min-width:200px;max-width:100%}
 .sim .result ul{margin:6px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .sim input[type=range]{accent-color:var(--lake);width:100%;max-width:260px}

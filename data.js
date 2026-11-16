@@ -23,6 +23,11 @@ window.DOJO = {
         `Comment organiser les workspaces et les catalogues entre dev, recette et prod ?`,
         `Quelles contraintes réseau (VNet injection, Private Link) rencontre-t-on chez les clients ?`
       ],
+      answers: [
+        `<b>Synthèse :</b> Choisis <b>Azure Databricks</b> dès qu'il y a de la donnée volumineuse ou complexe, du code (PySpark, Scala, ML, CI/CD poussé), du multi-cloud ou un besoin de maturité sur le streaming et l'ingénierie logicielle. <b>Microsoft Fabric</b> séduit les équipes très centrées Power BI / M365 avec peu de code. <b>Synapse</b> est désormais en retrait côté Microsoft au profit de Fabric.<br><b>Réflexe Keyrus :</b> Chez beaucoup de grands comptes, l'architecture cible combine <i>Azure Databricks</i> pour le socle Data Engineering / Data Science (Bronze → Silver → Gold) et <i>Power BI / Fabric</i> pour la restitution métier.`,
+        `<b>Synthèse :</b> Le standard moderne repose sur <b>un seul metastore Unity Catalog par région</b>, puis une isolation par <b>catalogues</b> (<code>domaine_dev</code>, <code>domaine_uat</code>, <code>domaine_prod</code>). Côté workspaces : soit un workspace par environnement (idéal pour isoler fortement la prod), soit un workspace mutualisé pour dev/uat et un dédié pour la prod.<br><b>Réflexe Keyrus :</b> Paramètre toujours le nom du catalogue en variable dans ton code ou ton bundle (<code>databricks.yml</code>) pour promouvoir de dev en prod sans toucher une ligne de SQL ou de Python.`,
+        `<b>Synthèse :</b> En entreprise, le workspace n'est presque jamais déployé sur un réseau public par défaut : on utilise <b>VNet Injection</b> (les clusters tournent dans le VNet du client, filtrés par NSG/pare-feu) et <b>Private Link</b> (flux privés entre plan de contrôle, plan de calcul et stockage ADLS sans passer par Internet).<br><b>Réflexe Keyrus :</b> Si le client utilise le calcul <i>Serverless</i>, pense à anticiper l'ouverture des <i>Network Connectivity Configurations (NCC)</i> et des Private Endpoints vers son stockage ADLS.`
+      ],
       lab: {
         title: `Prendre ses marques dans le workspace`, time: `20 min`,
         steps: [
@@ -73,6 +78,11 @@ window.DOJO = {
         `Sur quels critères trancher entre serverless et job cluster classique ?`,
         `Comment dimensionner un cluster (type de VM, nombre de workers) pour un premier pipeline ?`,
         `Quelles cluster policies mettre en place dès le départ chez un client ?`
+      ],
+      answers: [
+        `<b>Synthèse :</b> Le <b>Serverless</b> démarre en 2 à 5 secondes (contre 3 à 5 minutes en classique) et évite de payer des VM qui attendent. Pour des jobs courts (&lt; 30 min), fréquents ou imprévisibles, le Serverless revient souvent moins cher malgré un prix facial DBU plus élevé. Le <b>Job cluster classique</b> garde l'avantage sur des traitements très longs et réguliers, ou quand le client impose des VM spécifiques / librairies système.<br><b>Réflexe Keyrus :</b> Utilise <i>Serverless SQL Warehouse</i> par défaut pour toute la BI et les requêtes ad-hoc : l'arrêt à 1 minute d'inactivité et le réveil instantané écrasent le coût d'un warehouse classique.`,
+        `<b>Synthèse :</b> Commence petit ! Pour un pipeline de quelques dizaines de Go, un cluster <b>Job compute</b> de 2 à 4 workers (ex. <code>Standard_D4ds_v5</code>, 4 vCPU / 16 Go RAM) ou même un <b>Single Node</b> pour &lt; 5 Go suffit largement. Active Photon uniquement si le traitement est dominé par du scan/join/agg massif et vérifie que le gain de temps compense le surcoût DBU.<br><b>Réflexe Keyrus :</b> Ne dimensionne jamais à l'aveugle : fais un premier run, ouvre la <i>Spark UI / Ganglia / Metrics</i> et regarde si le goulot est le CPU, la mémoire (spill) ou l'I/O.`,
+        `<b>Synthèse :</b> Trois policies indispensables dès le jour 1 : <b>1) Exploration / Dev individuel</b> (Single Node ou 1–2 workers max, <code>autotermination_minutes</code> fixé à 15–20 min, liste fermée de petites VM), <b>2) Cluster partagé d'équipe</b> (autoscaling borné 1–4 workers, auto-stop 30 min), <b>3) Job de production</b> (réservé aux Service Principals, version LTS imposée, tags FinOps obligatoires).`
       ],
       lab: {
         title: `Lire un écran de configuration de calcul`, time: `15 min`,
@@ -147,6 +157,11 @@ SELECT * FROM crm.dbo.comptes LIMIT 10;` }
         `Un catalogue par environnement, par domaine, ou les deux ?`,
         `Tables managées ou externes : que recommandez-vous par défaut, et pourquoi ?`,
         `Fédération ou ingestion : à partir de quand faut-il copier les données ?`
+      ],
+      answers: [
+        `<b>Synthèse :</b> Chez un client mono-domaine, <code>dev</code> / <code>uat</code> / <code>prod</code> suffit. Dès qu'il y a plusieurs domaines métiers (finance, retail, RH), le patron recommandé est <b><code>&lt;domaine&gt;_&lt;env&gt;</code></b> (ex. <code>finance_dev</code>, <code>finance_prod</code>) avec les couches en schémas (<code>bronze</code>, <code>silver</code>, <code>gold</code>).<br><b>Réflexe Keyrus :</b> Cela permet d'isoler à la fois les emplacements de stockage ADLS (un conteneur par domaine/env) et les groupes d'accès Entra ID sans multiplier les metastores.`,
+        `<b>Synthèse :</b> Databricks recommande désormais les <b>tables managées par défaut</b> : elles bénéficient automatiquement de <i>Predictive Optimization</i> (OPTIMIZE, VACUUM et ANALYZE gérés en arrière-plan), d'<code>UNDROP TABLE</code> pendant 7 jours et de meilleures performances. On réserve les <b>tables externes</b> aux données déjà produites par d'autres moteurs hors Databricks ou quand une exigence réglementaire impose un contrôle strict du chemin de fichiers.`,
+        `<b>Synthèse :</b> <b>Lakehouse Federation</b> est idéale pour l'exploration rapide, des référentiels de petite taille (&lt; quelques millions de lignes) ou des jointures ponctuelles. Dès qu'une table externe est volumineuse, interrogée fréquemment par des dashboards, ou nécessite un historique (Time Travel), **il faut l'ingérer en Delta** pour ne pas saturer la base transactionnelle source.`
       ],
       lab: {
         title: `Schéma, table, volume et droits`, time: `25 min`,
@@ -229,6 +244,11 @@ print(jour.count())
         `Comment organisez-vous les Git folders et les branches en équipe ?`,
         `Quelles conventions de nommage et de structure pour les notebooks d'un pipeline ?`
       ],
+      answers: [
+        `<b>Synthèse :</b> Le patron d'or en production : <b>le notebook est une coquille fine d'orchestration</b> (lecture des widgets, lecture des tables, appel d'une fonction de transformation, écriture de la table cible). Toute la logique métier réutilisable (nettoyage, règles de gestion, calculs) vit dans des <b>modules Python (<code>.py</code>)</b> dans le même Git folder.<br><b>Réflexe Keyrus :</b> Grâce à ce découpage, tu peux tester unitairement tes fonctions Python avec <code>pytest</code> en CI/CD en 3 secondes, tout en gardant le confort visuel de <code>display()</code> en notebook.`,
+        `<b>Synthèse :</b> Chaque développeur possède son propre <b>Git folder</b> dans son dossier personnel (<code>/Workspace/Users/prenom.nom@client.fr/mon-repo</code>) calé sur sa branche de fonctionnalité (<code>feat/...</code>). Personne ne modifie directement les fichiers des environnements partagés : c'est la pipeline CI/CD (via Asset Bundles) qui déploie les branches <code>main</code> / <code>release</code> vers dev, uat et prod.`,
+        `<b>Synthèse :</b> Numérote et préfixe par couche : <code>01_bronze_ingest_...</code>, <code>02_silver_clean_...</code>, <code>03_gold_agg_...</code>. Impose une structure en 4 blocs dans chaque notebook : <b>1) Entête Markdown + <code>%pip</code></b>, <b>2) Déclaration et lecture des widgets</b>, <b>3) Transformations</b>, <b>4) Écriture idempotente + publication des <code>taskValues</code></b>.`
+      ],
       lab: {
         title: `Un notebook paramétré bilingue`, time: `30 min`,
         steps: [
@@ -304,6 +324,11 @@ enrichi = courses.join(F.broadcast(zones),
         `Comment lisez-vous une Spark UI pour trouver le stage qui coûte cher ?`,
         `Quand le cache est-il utile, et quand est-il contre-productif ?`,
         `SQL ou PySpark : quelle convention d'équipe conseillez-vous ?`
+      ],
+      answers: [
+        `<b>Synthèse :</b> Méthode en 3 clics : <b>1) Onglet Stages</b> → trie par <i>Duration</i> décroissante pour isoler le stage qui consomme 80 % du temps. <b>2) Dans ce stage</b> → regarde <i>Summary Metrics for Completed Tasks</i> : si le <i>Max</i> vaut 20 min alors que la <i>Median</i> vaut 5 s, c'est un <b>Skew</b> ; si la colonne <i>Spill (Memory / Disk)</i> est non nulle, c'est un manque de RAM ou des partitions trop grosses. <b>3) Onglet SQL / DataFrame</b> → repère les boîtes <i>Exchange</i> (shuffles) ou <i>BroadcastNestedLoopJoin</i> accidentels.`,
+        `<b>Synthèse :</b> <code>df.cache()</code> n'est utile que si un même DataFrame intermédiaire coûteux est utilisé par <b>plusieurs actions dans la même session</b> (ex. entraînement ML ou contrôles multiples) et qu'on pense à faire <code>df.unpersist()</code> après. Il est contre-productif dans un pipeline linéaire (A → B → C) car il consomme la RAM des workers et provoque du <i>spill</i> sur les étapes suivantes.<br><b>Réflexe Keyrus :</b> Sur Databricks, le <b>Disk Cache (ex-Delta Cache)</b> accélère déjà automatiquement la relecture des fichiers Parquet sur les SSD locaux des VM sans saturer la mémoire JVM.`,
+        `<b>Synthèse :</b> Comme Catalyst génère exactement le même plan physique, <b>SQL</b> est idéal pour les transformations métier lisibles par tous (jointures, agrégations, <code>QUALIFY</code>, <code>MERGE</code>), tandis que <b>PySpark</b> excelle dès qu'il faut paramétrer dynamiquement, boucler sur des métadonnées, factoriser des fonctions génériques ou écrire des tests unitaires.`
       ],
       lab: {
         title: `Voir la paresse et le shuffle`, time: `25 min`,
@@ -388,6 +413,11 @@ CREATE TABLE workspace.dojo.courses_test SHALLOW CLONE workspace.dojo.courses_go
         `Liquid clustering ou partitionnement : que faites-vous sur les tables existantes ?`,
         `Comment implémentez-vous un SCD de type 2 proprement ?`,
         `Quelle politique OPTIMIZE / VACUUM en production (planifiée, predictive optimization) ?`
+      ],
+      answers: [
+        `<b>Synthèse :</b> Sur toute <b>nouvelle table</b> (et toute table de moins de quelques To qu'on peut réécrire), choisis <b>Liquid Clustering (<code>CLUSTER BY</code>)</b> : il évite le piège du sur-partitionnement (petits fichiers) et permet de modifier les clés de clustering avec un simple <code>ALTER TABLE … CLUSTER BY (…)</code> sans réécrire l'historique. Sur une très grosse table existante déjà partitionnée qui fonctionne bien, inutile de tout casser immédiatement.`,
+        `<b>Synthèse :</b> Deux approches propres sur Databricks : <b>1) En Pipeline déclaratif (Lakeflow / DLT)</b>, utilise directement <code>APPLY CHANGES INTO … STORED AS SCD TYPE 2</code> qui gère automatiquement l'ouverture/fermeture des périodes et les arrivées tardives. <b>2) En SQL / PySpark classique</b>, un <code>MERGE INTO</code> qui ferme les lignes actives modifiées (<code>date_fin = current_date(), actif = false</code>) combiné à l'insertion des nouvelles versions.`,
+        `<b>Synthèse :</b> Si les tables sont <b>managées dans Unity Catalog</b>, active <b>Predictive Optimization</b> au niveau du catalogue : Databricks lance <code>OPTIMIZE</code> et <code>VACUUM</code> automatiquement quand c'est rentable. Pour des tables externes, planifie un job hebdomadaire (ou quotidien sur les tables très actives) qui exécute <code>OPTIMIZE</code> puis <code>VACUUM</code> (en gardant la rétention par défaut de 7 jours).`
       ],
       lab: {
         title: `Upsert, historique et retour arrière`, time: `35 min`,
@@ -478,6 +508,11 @@ FROM courses_bronze;` }
         `Quand un pipeline déclaratif vaut-il mieux qu'un job de notebooks ?`,
         `Comment gérez-vous la reprise sur incident et les rejeux de dates passées ?`
       ],
+      answers: [
+        `<b>Synthèse :</b> Règle pragmatique : <b>Azure Data Factory (ADF)</b> sert à l'acquisition depuis le SI (copie depuis SAP, bases on-premise via Self-Hosted Integration Runtime, SFTP) vers un Volume / ADLS en zone d'atterrissage. Dès que le fichier est posé dans le stockage, **un seul appel ADF déclenche un Lakeflow Job Databricks** (ou un File Arrival Trigger prend le relais), et tout le graphe Bronze → Silver → Gold est orchestré dans Databricks pour profiter du Repair Run, du partage de cluster et de l'observabilité fine.`,
+        `<b>Synthèse :</b> Choisis un <b>Pipeline déclaratif (Lakeflow / ex-DLT)</b> quand tu veux automatiser l'incrémental streaming/batch, déclarer des règles de qualité (<i>Expectations</i>) avec quarantaine/rejet et gérer du SCD Type 1/2 en quelques lignes de SQL. Préfère un <b>Job de notebooks / scripts Python</b> quand tu as besoin d'une logique procédurale complexe, d'appels d'API externes ou d'un contrôle très fin sur chaque étape.`,
+        `<b>Synthèse :</b> Trois règles d'or : <b>1)</b> Aucune tâche n'utilise <code>current_date()</code> en dur : elle lit un paramètre <code>date_traitement</code> (qui vaut la date du run par défaut). <b>2)</b> Les écritures utilisent <code>MERGE</code> conditionnel ou <code>INSERT … REPLACE WHERE jour = :date_traitement</code>. <b>3)</b> En cas d'incident partiel, on utilise <b>Repair run</b> ; en cas de rattrapage sur 15 jours (backfill), on lance un job paramétré (ou une tâche <i>For each</i>) sur la liste des dates.`
+      ],
       lab: {
         title: `Un job à trois tâches`, time: `40 min`,
         steps: [
@@ -546,6 +581,11 @@ WHERE fare_amount <= 0 OR trip_distance <= 0;
         `Import ou DirectQuery : quels critères de décision avec Power BI ?`,
         `Dashboards AI/BI ou Power BI : comment les positionnez-vous ?`,
         `Comment dimensionner un SQL warehouse pour une équipe de 20 analystes ?`
+      ],
+      answers: [
+        `<b>Synthèse :</b> <b>Mode Import par défaut dans 80 % des cas</b> : Power BI charge la couche Gold une ou plusieurs fois par jour, les interactions utilisateur sont instantanées et le SQL Warehouse s'éteint aussitôt (coût minimal). Choisis <b>DirectQuery</b> uniquement si la fraîcheur temps réel (&lt; 15 min) est exigée, si le volume Gold dépasse la capacité mémoire Power BI, ou si la sécurité ligne à ligne (RLS) doit absolument être évaluée à la volée par Unity Catalog.<br><b>Réflexe Keyrus :</b> Le <b>mode Composite (Dual)</b> offre le meilleur compromis : agrégats mensuels/journaliers en Import, et drill-down au détail de la transaction en DirectQuery !`,
+        `<b>Synthèse :</b> <b>Power BI</b> reste l'outil roi pour les tableaux de bord d'entreprise largement diffusés aux métiers avec modélisation sémantique complexe (DAX). Les <b>Dashboards AI/BI Databricks + Genie</b> sont imbattables pour le suivi opérationnel, les indicateurs de qualité de données, le FinOps et l'exploration rapide sans quitter le gouvernail Unity Catalog.`,
+        `<b>Synthèse :</b> Pour 20 analystes, privilégie un <b>SQL Warehouse Serverless</b> de taille <b>Small ou Medium</b> avec <b>Auto-stop à 5 minutes</b> (voire 1 minute) et un <b>Scaling de 1 à 3 clusters</b>. Tu absorbes les pics de 9 h du matin par ajout horizontal de clusters sans surpayer une taille X-Large toute la journée.`
       ],
       lab: {
         title: `De la requête au tableau de bord`, time: `30 min`,
@@ -616,6 +656,10 @@ COPY_OPTIONS ('mergeSchema' = 'true');` }
         `Auto Loader ou COPY INTO : où placez-vous la limite ?`,
         `Comment gérez-vous une évolution de schéma côté source en production ?`
       ],
+      answers: [
+        `<b>Synthèse :</b> <b>COPY INTO</b> est parfait pour des chargements SQL simples où le dossier source contient quelques centaines ou milliers de fichiers au total. Dès que le dossier accumule des dizaines de milliers ou millions de fichiers, ou que le schéma dérive dans le temps, passe à <b>Auto Loader (<code>cloudFiles</code>)</b> (ou <code>STREAM read_files()</code> en SQL) qui suit l'état dans RocksDB (checkpoint) et utilise les notifications de fichiers sans relister tout le stockage.`,
+        `<b>Synthèse :</b> Active le mode <code>cloudFiles.schemaEvolutionMode = "addNewColumns"</code> combiné à la colonne <code>_rescued_data</code> en Bronze. Quand une nouvelle colonne apparaît dans le JSON/CSV source, Auto Loader met à jour le schéma de la table Bronze, arrête proprement le micro-batch et — grâce au retry automatique configuré sur la tâche du Job — repart immédiatement avec le nouveau schéma. Une alerte SQL sur <code>_rescued_data IS NOT NULL</code> prévient l'équipe des changements de type incompatibles.`
+      ],
       lab: {
         title: `Ingérer des fichiers au fil de l'eau`, time: `40 min`,
         steps: [
@@ -681,6 +725,10 @@ DESCRIBE DETAIL workspace.dojo.courses_gold;  -- numFiles, sizeInBytes, clusteri
       ask: [
         `Quels sont les trois premiers réflexes face à un job devenu lent ?`,
         `Comment présentez-vous le suivi de coûts à un client ?`
+      ],
+      answers: [
+        `<b>Synthèse :</b> <b>1) Vérifier ce qui a changé côté données</b> (explosion soudaine du volume, milliers de petits fichiers en amont, ou apparition d'une clé très fréquente créant un <i>Skew</i>). <b>2) Ouvrir la Spark UI / Query Profile</b> pour identifier si le temps part dans le <i>Scan</i> (manque de data skipping / Liquid Clustering), l'<i>Exchange</i> (jointure non broadcastée ou shuffle inutile) ou le <i>Spill</i>. <b>3) Seulement après</b>, ajuster le code ou le dimensionnement du cluster.`,
+        `<b>Synthèse :</b> Mets en place dès le premier sprint une politique de <b>tags obligatoires</b> (<code>project</code>, <code>env</code>, <code>cost_center</code>) via les Cluster Policies et les Asset Bundles, puis branche un <b>Dashboard AI/BI FinOps</b> sur <code>system.billing.usage</code> et <code>system.lakeflow.job_run_timeline</code>. Le client voit en temps réel le coût en euros par pipeline, les jobs les plus gourmands et les clusters interactifs restés allumés.`
       ],
       lab: {
         title: `Mesurer avant d'optimiser`, time: `30 min`,
@@ -763,6 +811,10 @@ databricks bundle run courses_quotidien -t dev` }
         `Quelle organisation de dépôt Git recommandez-vous pour un projet Databricks ?`,
         `Asset Bundles ou Terraform : qui gère quoi ?`
       ],
+      answers: [
+        `<b>Synthèse :</b> Structure standard d'un dépôt <b>Databricks Asset Bundle</b> : <code>databricks.yml</code> à la racine, <code>resources/</code> (fichiers YAML découpés par job et pipeline), <code>src/</code> (les notebooks et un package Python partageable pour les fonctions pures), <code>tests/</code> (les tests unitaires <code>pytest</code> exécutés à chaque PR) et <code>.github/workflows/</code> ou <code>azure-pipelines.yml</code> pour l'intégration continue.`,
+        `<b>Synthèse :</b> Séparation claire des responsabilités : <b>Terraform</b> (équipe Cloud / Infra) déploie le socle permanent : les Workspaces Azure Databricks, le réseau (VNet, Private Link), l'Access Connector, le metastore Unity Catalog, les Catalogues, les Storage Credentials et les Service Principals. <b>Databricks Asset Bundles (DABs)</b> (équipe Data) déploie tout ce qui vit au rythme du code applicatif : les Jobs, les Pipelines déclaratifs, les Notebooks, les fichiers Python et les Dashboards.`
+      ],
       lab: {
         title: `Déployer ton pipeline par bundle`, time: `60 min`,
         steps: [
@@ -812,46 +864,128 @@ databricks bundle run <nom_du_job> -t dev`
     `Une page de README qui explique les choix : c'est ce que tu montreras en interne`
   ],
 
-  mapping: [
-    [`Virtual warehouse`, `SQL warehouse`, `Tailles T-shirt et auto-stop des deux côtés. Pour Spark, il existe en plus des clusters.`],
-    [`Database / Schema`, `Catalogue / Schéma`, `Nommage à trois niveaux identique.`],
-    [`Stage`, `Volume / external location`, `Zone de fichiers gouvernée.`],
-    [`COPY INTO / Snowpipe`, `COPY INTO / Auto Loader`, `Auto Loader joue le rôle de Snowpipe.`],
-    [`Streams et Tasks`, `Change Data Feed et Jobs`, `Le CDF expose les changements ; les jobs orchestrent.`],
-    [`Dynamic Tables`, `Materialized views et streaming tables`, `Dans les pipelines déclaratifs.`],
-    [`Time Travel`, `Time travel Delta`, `Lié à la rétention des fichiers (VACUUM).`],
-    [`Zero-copy clone`, `SHALLOW CLONE`, `Copie des métadonnées seulement.`],
-    [`Clustering keys`, `Liquid clustering`, `CLUSTER BY dans les deux cas.`],
-    [`Snowpark`, `PySpark`, `API DataFrame à évaluation paresseuse.`],
-    [`Secure Data Sharing`, `Delta Sharing`, `Protocole ouvert côté Databricks.`],
-    [`Row access / masking policies`, `Row filters / column masks`, `Même principe, rattaché à Unity Catalog.`]
+  tracks: {
+    all: {
+      label: `Cursus complet`,
+      time: `~15 h · 11 modules`,
+      desc: `Le parcours intégral de la formation Databricks : des fondations jusqu'à l'industrialisation par Asset Bundles.`,
+      mods: [`m1`, `m2`, `m3`, `m4`, `m5`, `m6`, `m7`, `m8`, `m9`, `m10`, `m11`]
+    },
+    express: {
+      label: `Sprint Express (Absents formation)`,
+      time: `2 h chrono · 6 modules clés`,
+      desc: `Tu n'as pas pu assister aux 3 jours de formation ? Voici le condensé opérationnel : les 6 modules incontournables, leurs simulateurs et le Labo SQL pour tout comprendre en un après-midi.`,
+      mods: [`m1`, `m2`, `m3`, `m6`, `m7`, `m9`],
+      steps: [
+        `<b>00:00 – 00:25 · Fondations & Coûts</b> : Lis l'essentiel des modules <a href="#module-m1">1 (Plateforme)</a> et <a href="#module-m2">2 (Compute)</a>, puis réussis le simulateur <a href="#sim-cout">Facture d'un pipeline</a>.`,
+        `<b>00:25 – 00:45 · Unity Catalog</b> : Parcoure le module <a href="#module-m3">3 (Unity Catalog)</a> et débloque l'accès de l'analyste dans le simulateur <a href="#sim-droits">Droits UC</a>.`,
+        `<b>00:45 – 01:10 · Le cœur de Delta Lake</b> : Étudie le module <a href="#module-m6">6 (Delta Lake)</a>, manipule le journal dans le simulateur <a href="#sim-delta">Time Travel & VACUUM</a>.`,
+        `<b>01:10 – 01:45 · Mains dans le cambouis SQL</b> : Ouvre le <a href="#labo">Labo SQL (Banque Lanterne)</a> et réalise au moins les missions 1, 3, 4 et 7 (registre des défauts, Silver/rejets, Gold et Upsert idempotent).`,
+        `<b>01:45 – 02:00 · Orchestration & Ingestion</b> : Passe les simulateurs <a href="#sim-job">Repair run</a>, <a href="#sim-dlt">Expectations Lakeflow</a> et <a href="#sim-autoloader">Auto Loader</a>.`
+      ]
+    },
+    bi: {
+      label: `Consultant BI, SQL & Analytics`,
+      time: `~5 h · 5 modules`,
+      desc: `Conçu pour les profils BI, Data Analysts et spécialistes Power BI / SQL qui exploitent ou modélisent la couche Gold.`,
+      mods: [`m1`, `m2`, `m3`, `m6`, `m8`]
+    },
+    de: {
+      label: `Data Engineer & Indus`,
+      time: `~10 h · 8 modules`,
+      desc: `Ciblé sur la construction de pipelines robustes : PySpark, Delta Lake, Auto Loader, Lakeflow Jobs/DLT, diagnostic Spark UI et CI/CD.`,
+      mods: [`m3`, `m4`, `m5`, `m6`, `m7`, `m9`, `m10`, `m11`]
+    },
+    certif: {
+      label: `Objectif Certification Associate`,
+      time: `~8 h · 7 modules + Examen`,
+      desc: `Focalisé sur les chapitres à fort coefficient de la certification Databricks Certified Data Engineer Associate et les pièges d'examen.`,
+      mods: [`m1`, `m3`, `m4`, `m6`, `m7`, `m9`, `m11`]
+    }
+  },
+
+  playbooks: [
+    {
+      title: `Découpage Unity Catalog multi-environnements`,
+      tag: `Gouvernance · Module 3`,
+      ctx: `Le client démarre sur Unity Catalog avec 3 environnements (Dev, UAT, Prod) et 2 domaines métiers (Finance, Retail). Il hésite entre créer 3 metastores ou tout mettre dans un seul catalogue.`,
+      diag: `Un metastore par environnement empêche le partage simple et complique l'administration ; un seul catalogue pour tout le monde mélange les droits de dev et de prod.`,
+      reco: `<b>1 seul metastore par région</b>, puis des catalogues nommés <code>&lt;domaine&gt;_&lt;env&gt;</code> (<code>finance_dev</code>, <code>finance_prod</code>, <code>retail_dev</code>, <code>retail_prod</code>), chacun rattaché à son propre conteneur ADLS managé, avec les schémas <code>bronze</code>, <code>silver</code>, <code>gold</code>.`,
+      trap: `Coder le nom du catalogue en dur dans les requêtes SQL : passe toujours le catalogue en paramètre de job ou variable d'Asset Bundle (<code>USE CATALOG IDENTIFIER(:catalogue)</code>).`
+    },
+    {
+      title: `Power BI sur Databricks : Import, DirectQuery ou Dual ?`,
+      tag: `SQL & BI · Module 8`,
+      ctx: `Une direction métier veut brancher Power BI en DirectQuery sur une table de 400 millions de lignes pour « avoir le temps réel », mais se plaint de lenteurs et d'une facture SQL Warehouse élevée.`,
+      diag: `Chaque clic de filtre dans Power BI envoie plusieurs requêtes SQL analytiques et maintient le SQL Warehouse allumé en permanence.`,
+      reco: `Passer en <b>mode Import</b> (rafraîchi 2 à 4 fois par jour) pour 90 % des rapports, ou en <b>mode Composite (Dual)</b> : tables d'agrégats Gold en Import (réponse en 50 ms) et table de détail en DirectQuery uniquement lors d'un drill-through sur une transaction précise, sur un <b>SQL Warehouse Serverless</b>.`,
+      trap: `Connecter Power BI directement sur la couche Silver ou sur un cluster Spark All-purpose au lieu du HTTP Path d'un SQL Warehouse.`
+    },
+    {
+      title: `Choisir le bon pattern d'ingestion de fichiers`,
+      tag: `Ingestion · Module 9`,
+      ctx: `Des fichiers JSON et CSV arrivent toutes les 15 minutes dans un conteneur ADLS (environ 5 000 fichiers par jour). Le schéma source ajoute parfois des champs sans prévenir.`,
+      diag: `Un listage classique ou un simple <code>spark.read.json()</code> re-scanne tout le répertoire à chaque exécution et casse dès qu'une colonne change.`,
+      reco: `Utiliser <b>Auto Loader (<code>cloudFiles</code>)</b> (ou <code>STREAM read_files()</code> dans un pipeline déclaratif) vers un Volume / External Location, avec un trigger <b><code>availableNow=True</code></b> planifié toutes les 15 min : on paie le coût d'un batch court tout en ayant la gestion de checkpoint et la colonne <code>_rescued_data</code>.`,
+      trap: `Laisser tourner un cluster en streaming continu 24h/24 (<code>processingTime</code>) alors qu'une fraîcheur de 15 minutes en <code>availableNow</code> suffit et coûte 5 fois moins cher.`
+    },
+    {
+      title: `ADF, Lakeflow Jobs ou Pipelines déclaratifs (DLT) ?`,
+      tag: `Orchestration · Module 7`,
+      ctx: `L'équipe utilisait Azure Data Factory (ADF) pour lancer 18 notebooks Databricks les uns après les autres via 18 activités Notebook distinctes.`,
+      diag: `Chaque activité ADF instancie ou sollicite du calcul séparément, le passage de paramètres est lourd et on perd la réutilisation de job cluster ainsi que le Repair Run natif.`,
+      reco: `Garder ADF uniquement pour déposer la donnée brute depuis les sources externes, puis déclencher <b>un seul Lakeflow Job multi-tâches</b> côté Databricks. Utiliser un <b>Pipeline déclaratif (Lakeflow / DLT)</b> pour les flux Bronze → Silver → Gold qui nécessitent des <i>Expectations</i> de qualité et du SCD Type 2 automatique.`,
+      trap: `Orchestrer les notebooks par une boucle de <code>dbutils.notebook.run()</code> dans un notebook « maître » : en cas d'échec à la 14e table, impossible de faire un Repair Run ciblé.`
+    },
+    {
+      title: `Audit FinOps : réduire la facture de 40 % en une semaine`,
+      tag: `Coûts & Perf · Modules 2 & 10`,
+      ctx: `Le client trouve sa facture Azure Databricks + VM trop élevée alors que les volumes de données restent modérés.`,
+      diag: `Dans 4 cas sur 5 : des jobs de production tournent sur des clusters All-purpose, des clusters de dev ont un auto-stop à 120 min (ou désactivé), et un SQL Warehouse est réveillé toutes les 5 min par une alerte.`,
+      reco: `1) Interroger <code>system.billing.usage</code> par SKU. 2) Basculer tous les traitements planifiés sur du <b>Job compute</b> ou <b>Serverless Jobs</b>. 3) Imposer une <b>Cluster Policy</b> avec auto-termination à 15–20 min en dev. 4) Activer <b>Liquid Clustering</b> sur les tables Gold les plus lues.`,
+      trap: `Doubler la taille du cluster d'un job lent avant d'avoir vérifié dans la Spark UI s'il s'agit d'un <i>data skew</i> sur une seule partition.`
+    },
+    {
+      title: `Migrer d'un entrepôt SQL Server / Oracle vers le Lakehouse`,
+      tag: `Architecture · Modules 5 & 6`,
+      ctx: `Une équipe habituée aux bases relationnelles transpose telle quelle une série de procédures stockées contenant des curseurs ligne à ligne et des centaines de petits <code>UPDATE</code> unitaires.`,
+      diag: `Sur Delta Lake, chaque <code>UPDATE</code> ou <code>INSERT</code> unitaire crée un nouveau commit et réécrit des fichiers Parquet (ou génère des deletion vectors) : une boucle de 1 000 <code>INSERT</code> met 20 minutes au lieu de 2 secondes.`,
+      reco: `Remplacer la logique ligne à ligne par des opérations ensemblistes : construire un DataFrame / CTE de toutes les modifications du lot, puis appliquer <b>un seul <code>MERGE INTO</code></b> ou <b><code>INSERT … REPLACE WHERE</code></b> par table.`,
+      trap: `Créer des index ou partitionner une table de 5 Go en 3 000 dossiers par jour + agence : utiliser <code>CLUSTER BY</code> (Liquid Clustering) à la place.`
+    }
   ],
 
   glossary: [
     [`ADLS Gen2`, `Azure Data Lake Storage : le stockage objet où vivent les fichiers des tables.`],
-    [`AQE`, `Adaptive Query Execution : réoptimisation du plan pendant l'exécution.`],
-    [`Auto Loader`, `Ingestion incrémentale de fichiers, format cloudFiles.`],
-    [`Catalyst`, `L'optimiseur de requêtes de Spark.`],
-    [`CDF`, `Change Data Feed : flux des changements d'une table Delta.`],
-    [`Checkpoint`, `État de progression d'un flux Structured Streaming.`],
-    [`DABs`, `Databricks Asset Bundles, rebaptisés Declarative Automation Bundles dans la documentation récente : projet et ressources décrits en YAML.`],
-    [`DBR`, `Databricks Runtime : image qui fixe les versions de Spark, Delta et des bibliothèques.`],
-    [`DBU`, `Databricks Unit : unité de facturation de la plateforme.`],
-    [`Delta Lake`, `Format de table ouvert : Parquet + journal de transactions.`],
-    [`Deletion vector`, `Marquage des lignes supprimées sans réécrire les fichiers.`],
-    [`Driver`, `Nœud qui porte la session Spark et coordonne les workers.`],
-    [`Expectation`, `Règle de qualité déclarée dans un pipeline déclaratif.`],
-    [`External location`, `Chemin de stockage autorisé dans Unity Catalog.`],
-    [`Genie`, `Interrogation des données en langage naturel.`],
-    [`Git folder`, `Dossier du workspace relié à un dépôt Git (ex-Repos).`],
-    [`Lakeflow`, `Famille d'outils d'ingestion et d'orchestration : Connect, Declarative Pipelines, Jobs.`],
-    [`Liquid clustering`, `Organisation des données par CLUSTER BY, successeur du partitionnement et du Z-ORDER.`],
-    [`Metastore`, `Conteneur racine de Unity Catalog, un par région.`],
-    [`Photon`, `Moteur d'exécution vectorisé en C++.`],
-    [`Service principal`, `Identité technique pour l'automatisation.`],
-    [`Shuffle`, `Redistribution des données entre partitions.`],
-    [`Skew`, `Déséquilibre de volume entre partitions.`],
-    [`Volume`, `Objet Unity Catalog qui gouverne des fichiers.`],
-    [`Z-ORDER`, `Ancienne technique de colocalisation des données, remplacée par le liquid clustering.`]
+    [`AQE`, `Adaptive Query Execution : réoptimisation du plan Spark pendant l'exécution (coalesce des partitions, broadcast dynamique, gestion du skew).`],
+    [`Auto Loader`, `Ingestion incrémentale de fichiers à grande échelle (format cloudFiles en PySpark, STREAM read_files en SQL).`],
+    [`Catalyst`, `L'optimiseur de requêtes de Spark qui transforme le plan logique en plan physique optimisé.`],
+    [`CDF`, `Change Data Feed : option Delta qui expose le flux des lignes insérées, mises à jour et supprimées entre deux versions.`],
+    [`Checkpoint`, `Dossier d'état de progression d'un flux Structured Streaming garantissant le traitement exactement une fois.`],
+    [`DABs`, `Databricks Asset Bundles (ou Declarative Automation Bundles) : description industrielle du projet (jobs, pipelines, cibles) en YAML.`],
+    [`Data skipping`, `Évitement automatique de lecture des fichiers Parquet grâce aux statistiques min/max stockées dans _delta_log.`],
+    [`DBR`, `Databricks Runtime : image système qui fixe les versions de Spark, Delta, Python et des bibliothèques.`],
+    [`DBU`, `Databricks Unit : unité de facturation de la puissance de calcul sur la plateforme.`],
+    [`Delta Lake`, `Format de table ouvert : fichiers Parquet + journal transactionnel JSON (_delta_log) apportant ACID et Time Travel.`],
+    [`Deletion vector`, `Marquage logique des lignes supprimées ou modifiées dans un fichier annexe sans réécrire immédiatement le fichier Parquet.`],
+    [`Driver`, `Nœud maître du cluster qui porte la session Spark, construit le plan et coordonne les workers.`],
+    [`Expectation`, `Règle de qualité de données déclarée dans un pipeline déclaratif (tracer, DROP ROW ou FAIL UPDATE).`],
+    [`External location`, `Objet Unity Catalog associant un chemin ADLS et un Storage Credential.`],
+    [`Genie`, `Interface AI/BI permettant d'interroger des tables gouvernées en langage naturel.`],
+    [`Git folder`, `Dossier du workspace connecté à un dépôt Git distant (anciennement Repos).`],
+    [`Idempotence`, `Propriété d'un traitement qui produit exactement le même état final même s'il est exécuté plusieurs fois de suite.`],
+    [`Lakeflow`, `Famille unifiée d'outils d'ingestion et d'orchestration : Connect, Spark Declarative Pipelines (ex-DLT) et Jobs (ex-Workflows).`],
+    [`Liquid clustering`, `Organisation physique souple des données par CLUSTER BY (colonnes), successeur du partitionnement et du Z-ORDER.`],
+    [`Medallion`, `Architecture en 3 couches : Bronze (brut historisé), Silver (nettoyé, typé, dédoublonné), Gold (agrégé pour le métier).`],
+    [`Metastore`, `Conteneur racine de gouvernance Unity Catalog (un seul par région cloud).`],
+    [`Photon`, `Moteur d'exécution natif vectorisé en C++ qui accélère les requêtes SQL et DataFrame.`],
+    [`Predictive optimization`, `Maintenance automatique (OPTIMIZE, VACUUM, ANALYZE) exécutée en arrière-plan sur les tables managées Unity Catalog.`],
+    [`Service principal`, `Identité technique non humaine sous laquelle doivent tourner les jobs et déploiements de production.`],
+    [`Shuffle`, `Redistribution coûteuse des données sur le réseau entre les workers lors d'un join, groupBy, distinct ou orderBy.`],
+    [`Skew`, `Déséquilibre de répartition où une clé concentre une part disproportionnée des données sur une seule task.`],
+    [`Spill`, `Débordement sur disque local lorsque les données traitées par une task dépassent la mémoire RAM disponible.`],
+    [`Volume`, `Objet Unity Catalog gouvernant les fichiers non tabulaires (/Volumes/catalogue/schema/volume/).`],
+    [`Watermark`, `Seuil de tolérance au retard des événements dans une agrégation en streaming.`],
+    [`Z-ORDER`, `Technique historique de tri multidimensionnel des fichiers Delta, aujourd'hui remplacée par le Liquid Clustering.`]
   ]
 };

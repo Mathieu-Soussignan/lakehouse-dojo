@@ -35,7 +35,17 @@ CREATE OR REPLACE TABLE ref.gold_flux AS
   GROUP BY cl.agence_id, tx.mois;
 CREATE OR REPLACE TABLE ref.silver_j1 AS SELECT * FROM ref.silver_transactions;
 UPDATE ref.silver_j1 SET statut = 'ANNULEE' FROM arrivee_20260701 a WHERE ref.silver_j1.transaction_id = a.transaction_id AND a.statut = 'ANNULEE' AND ref.silver_j1.statut <> 'ANNULEE';
-INSERT INTO ref.silver_j1 SELECT a.* REPLACE (upper(trim(a.devise)) AS devise) FROM arrivee_20260701 a WHERE a.statut = 'VALIDEE' AND NOT EXISTS (SELECT 1 FROM ref.silver_j1 s WHERE s.transaction_id = a.transaction_id);`,
+INSERT INTO ref.silver_j1 SELECT a.* REPLACE (upper(trim(a.devise)) AS devise) FROM arrivee_20260701 a WHERE a.statut = 'VALIDEE' AND NOT EXISTS (SELECT 1 FROM ref.silver_j1 s WHERE s.transaction_id = a.transaction_id);
+CREATE OR REPLACE TABLE ref.lot_3j AS
+  WITH brut AS (
+    SELECT * REPLACE (upper(trim(devise)) AS devise) FROM arrivee_20260701
+    UNION ALL SELECT * REPLACE (upper(trim(devise)) AS devise) FROM arrivee_20260702
+    UNION ALL SELECT * REPLACE (upper(trim(devise)) AS devise) FROM arrivee_20260703
+  )
+  SELECT * FROM brut QUALIFY row_number() OVER (PARTITION BY transaction_id ORDER BY CASE WHEN statut = 'ANNULEE' THEN 0 ELSE 1 END) = 1;
+CREATE OR REPLACE TABLE ref.silver_j3 AS SELECT * FROM ref.silver_transactions;
+UPDATE ref.silver_j3 SET statut = 'ANNULEE' FROM ref.lot_3j a WHERE ref.silver_j3.transaction_id = a.transaction_id AND a.statut = 'ANNULEE' AND ref.silver_j3.statut <> 'ANNULEE';
+INSERT INTO ref.silver_j3 SELECT a.* FROM ref.lot_3j a WHERE NOT EXISTS (SELECT 1 FROM ref.silver_j3 s WHERE s.transaction_id = a.transaction_id);`,
 
   /* Ce qui change entre le SQL du labo (DuckDB) et celui de Databricks. */
   DIALECT: [
@@ -154,6 +164,54 @@ INSERT INTO ref.silver_j1 SELECT a.* REPLACE (upper(trim(a.devise)) AS devise) F
       idempotent: { name: 'silver_transactions', ref: 'ref.silver_j1', reset: 'ref.silver_transactions' },
       after: 'Voilà pourquoi le MERGE de Delta est l\'outil du chargement incrémental : une instruction, atomique, rejouable. Sur Databricks, tout ceci tient en une commande (ci-dessous, après « Équivalent PySpark »). Et si le job échoue à mi-chemin, <em>Repair run</em> relance la tâche : sans idempotence, elle dupliquerait les données.',
       py: '-- Databricks SQL : la même logique, en une instruction atomique\nMERGE INTO silver_transactions AS t\nUSING arrivee_20260701 AS a ON t.transaction_id = a.transaction_id\nWHEN MATCHED AND a.statut = \'ANNULEE\' AND t.statut <> \'ANNULEE\'\n  THEN UPDATE SET t.statut = \'ANNULEE\'\nWHEN NOT MATCHED AND a.statut = \'VALIDEE\'\n  THEN INSERT *;'
+    },
+    {
+      id: 'm8', xp: 60, title: 'Rattraper 3 jours d\'un coup : le piège du lot multi-fichiers',
+      brief: 'Après un incident le week-end, trois fichiers attendent : <code>arrivee_20260701</code>, <code>arrivee_20260702</code> et <code>arrivee_20260703</code> (170 lignes au total). Piège classique : l\'opération <code>TX0003231</code> est créée le 1er juillet (<code>VALIDEE</code>) puis annulée le 3 juillet (<code>ANNULEE</code>), et <code>TX0001969</code> est annulée deux fois ! Sur Databricks, un <code>MERGE</code> dont la source contient deux lignes pour le même <code>transaction_id</code> échoue immédiatement. Construis d\'abord une table ou vue dédoublonnée <code>lot_3j</code> (une seule ligne par <code>transaction_id</code>, devise normalisée, où <code>ANNULEE</code> l\'emporte sur <code>VALIDEE</code> grâce à <code>QUALIFY row_number()</code>), puis applique ce lot de façon <strong>idempotente</strong> à <code>silver_transactions</code>.',
+      needs: ['silver_transactions'],
+      starter: '-- 1. Empiler les 3 arrivées, normaliser la devise et garder 1 ligne par transaction_id (ANNULEE prioritaire)\nCREATE OR REPLACE TEMP VIEW lot_3j AS\nWITH brut AS (\n  SELECT * REPLACE (upper(trim(devise)) AS devise) FROM arrivee_20260701\n  UNION ALL SELECT * REPLACE (upper(trim(devise)) AS devise) FROM arrivee_20260702\n  UNION ALL SELECT * REPLACE (upper(trim(devise)) AS devise) FROM arrivee_20260703\n)\nSELECT * FROM brut\n-- QUALIFY row_number() OVER (PARTITION BY transaction_id ORDER BY …) = 1\n;\n\n-- 2. Mettre à jour les opérations existantes qui passent à ANNULEE\nUPDATE silver_transactions\nSET statut = \'ANNULEE\'\nFROM lot_3j a\nWHERE silver_transactions.transaction_id = a.transaction_id\n  AND a.statut = \'ANNULEE\'\n  AND silver_transactions.statut <> \'ANNULEE\';\n\n-- 3. Insérer toutes les nouvelles opérations de juillet (avec leur statut final)\nINSERT INTO silver_transactions\nSELECT a.* FROM lot_3j a\nWHERE NOT EXISTS (SELECT 1 FROM silver_transactions s WHERE s.transaction_id = a.transaction_id);\n',
+      hints: [
+        'Pour que <code>ANNULEE</code> passe avant <code>VALIDEE</code> dans la fenêtre : <code>ORDER BY CASE WHEN statut = \'ANNULEE\' THEN 0 ELSE 1 END</code> (ou simplement <code>ORDER BY statut ASC</code> puisque A vient avant V !).',
+        'Attention dans l\'<code>INSERT</code> : contrairement à la mission 7, n\'écris pas <code>WHERE a.statut = \'VALIDEE\'</code> car <code>TX0003231</code> est une nouvelle opération de juillet dont l\'état final au 3 juillet est déjà <code>ANNULEE</code> ! La clause <code>NOT EXISTS</code> suffit.',
+        'CREATE OR REPLACE TEMP VIEW lot_3j AS\nWITH brut AS (\n  SELECT * REPLACE (upper(trim(devise)) AS devise) FROM arrivee_20260701\n  UNION ALL SELECT * REPLACE (upper(trim(devise)) AS devise) FROM arrivee_20260702\n  UNION ALL SELECT * REPLACE (upper(trim(devise)) AS devise) FROM arrivee_20260703\n)\nSELECT * FROM brut\nQUALIFY row_number() OVER (PARTITION BY transaction_id ORDER BY CASE WHEN statut = \'ANNULEE\' THEN 0 ELSE 1 END) = 1;\n\nUPDATE silver_transactions SET statut = \'ANNULEE\' FROM lot_3j a\nWHERE silver_transactions.transaction_id = a.transaction_id AND a.statut = \'ANNULEE\' AND silver_transactions.statut <> \'ANNULEE\';\n\nINSERT INTO silver_transactions SELECT a.* FROM lot_3j a\nWHERE NOT EXISTS (SELECT 1 FROM silver_transactions s WHERE s.transaction_id = a.transaction_id);'
+      ],
+      idempotent: { name: 'silver_transactions', ref: 'ref.silver_j3', reset: 'ref.silver_transactions' },
+      after: 'Bravo : tu viens de maîtriser le pattern n°1 des pipelines incrémentaux en production. Quand Auto Loader (<code>availableNow</code>) ou un backfill absorbe plusieurs fichiers d\'un coup, on dédoublonne toujours le micro-lot par clé primaire en gardant l\'état le plus récent avant d\'exécuter le <code>MERGE INTO</code>.',
+      py: '-- Databricks SQL : dédoublonner la source dans le USING avant le MERGE\nWITH lot_3j AS (\n  SELECT * EXCEPT (devise), upper(trim(devise)) AS devise\n  FROM read_files(\'/Volumes/banque/lanterne/arrivees/*.csv\', format => \'csv\', header => true)\n  QUALIFY row_number() OVER (\n    PARTITION BY transaction_id\n    ORDER BY CASE WHEN statut = \'ANNULEE\' THEN 0 ELSE 1 END\n  ) = 1\n)\nMERGE INTO silver_transactions AS t\nUSING lot_3j AS a ON t.transaction_id = a.transaction_id\nWHEN MATCHED AND a.statut = \'ANNULEE\' AND t.statut <> \'ANNULEE\'\n  THEN UPDATE SET t.statut = \'ANNULEE\'\nWHEN NOT MATCHED\n  THEN INSERT *;'
+    },
+    {
+      id: 'm9', xp: 50, title: 'L\'alerte SQL : traquer les comptes orphelins',
+      brief: 'À la mission 5, tu as découvert que des opérations de <code>silver_transactions</code> disparaissaient de la couche Gold parce que leur compte pointait vers un <code>client_id</code> absent de <code>silver_clients</code>. Dans Databricks SQL (Module 8), on ne laisse jamais une telle anomalie silencieuse : on crée une <strong>Alerte SQL</strong> qui surveille les comptes orphelins. Écris la requête support de cette alerte : pour chaque compte de <code>bronze_comptes</code> dont le <code>client_id</code> n\'existe pas dans <code>silver_clients</code>, renvoie <code>compte_id</code>, <code>client_id</code>, <code>operations</code> (nombre de lignes dans <code>silver_transactions</code>) et <code>volume_eur</code> (somme des valeurs absolues <code>round(sum(abs(montant)), 2)</code>), triés par <code>operations DESC</code>.',
+      needs: ['silver_clients', 'silver_transactions'],
+      starter: '-- Requête support de l\'alerte Databricks SQL : comptes sans client dans silver_clients\nSELECT\n  co.compte_id,\n  co.client_id,\n  count(*) AS operations,\n  round(sum(abs(t.montant)), 2) AS volume_eur\nFROM silver_transactions t\nJOIN bronze_comptes co USING (compte_id)\n-- Écarte les comptes qui ont un client dans silver_clients (ANTI JOIN)\nGROUP BY ALL\nORDER BY operations DESC;\n',
+      hints: [
+        'Utilise <code>ANTI JOIN silver_clients cl ON cl.client_id = co.client_id</code> (ou <code>LEFT JOIN</code> + <code>WHERE cl.client_id IS NULL</code>) pour ne garder que les comptes sans client.',
+        'N\'oublie pas <code>abs(t.montant)</code> dans la somme pour mesurer le volume financier total en jeu (débits et crédits cumulés).',
+        'SELECT co.compte_id, co.client_id, count(*) AS operations, round(sum(abs(t.montant)), 2) AS volume_eur\nFROM silver_transactions t\nJOIN bronze_comptes co USING (compte_id)\nANTI JOIN silver_clients cl ON cl.client_id = co.client_id\nGROUP BY co.compte_id, co.client_id\nORDER BY operations DESC;'
+      ],
+      expect: {
+        sql: 'SELECT co.compte_id, co.client_id, count(*) AS operations, round(sum(abs(t.montant)), 2) AS volume_eur FROM ref.silver_transactions t JOIN bronze_comptes co USING (compte_id) ANTI JOIN ref.silver_clients cl ON cl.client_id = co.client_id GROUP BY co.compte_id, co.client_id ORDER BY operations DESC, co.compte_id',
+        ordered: true
+      },
+      variants: [
+        {
+          sql: 'SELECT co.compte_id, co.client_id, count(*) AS operations, round(sum(t.montant), 2) AS volume_eur FROM ref.silver_transactions t JOIN bronze_comptes co USING (compte_id) ANTI JOIN ref.silver_clients cl ON cl.client_id = co.client_id GROUP BY co.compte_id, co.client_id ORDER BY operations DESC, co.compte_id',
+          msg: 'Tu as sommé <code>montant</code> avec son signe (les débits compensent les crédits). Utilise <code>sum(abs(t.montant))</code> pour mesurer le volume total d\'activité non rattaché.'
+        }
+      ],
+      followup: {
+        q: 'Sur quel type de calcul planifier cette Alerte Databricks SQL toutes les heures au moindre coût ?',
+        options: [
+          'Sur un cluster All-purpose laissé allumé 24h/24',
+          'Sur un SQL Warehouse Serverless (ou à auto-stop court de 1 à 5 minutes)',
+          'Sur le poste local du développeur avec cron',
+          'Sur un cluster ML avec GPU'
+        ],
+        answer: 1, xp: 10,
+        explain: 'Les Alertes Databricks SQL s\'exécutent sur un SQL Warehouse. Avec un SQL Warehouse Serverless, le démarrage est quasi instantané, la requête d\'alerte tourne en 2 secondes et la facturation s\'arrête aussitôt.'
+      },
+      after: 'Le tour de la Banque Lanterne est complet : tu as audité le brut, nettoyé et réconcilié la Silver, construit la Gold en euros, absorbé des lots incrémentaux idempotents et posé la sonde d\'alerte SQL.',
+      py: '# En PySpark : isoler les comptes orphelins pour une table de quarantaine\nfrom pyspark.sql import functions as F\n\norphelins = (spark.table("silver_transactions").alias("t")\n  .join(spark.table("bronze_comptes").alias("co"), "compte_id")\n  .join(spark.table("silver_clients").alias("cl"), "client_id", "left_anti")\n  .groupBy("compte_id", "client_id")\n  .agg(F.count("*").alias("operations"),\n       F.round(F.sum(F.abs("montant")), 2).alias("volume_eur"))\n  .orderBy(F.desc("operations")))\ndisplay(orphelins)'
     }
   ]
 };
