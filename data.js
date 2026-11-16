@@ -59,7 +59,7 @@ window.DOJO = {
         `<b>SQL warehouse</b> : calcul dédié au SQL et à la BI (éditeur SQL, dashboards, Power BI). Tailles « T-shirt » (2X-Small à 4X-Large), auto-stop, mise à l'échelle par ajout de clusters.`,
         `<b>Modes d'accès</b> : <i>Standard</i> (ex-Shared, multi-utilisateurs, isolation) et <i>Dedicated</i> (ex-Single user, un utilisateur ou un groupe). Les deux sont compatibles Unity Catalog.`,
         `Un cluster = 1 <b>driver</b> (planifie, collecte les résultats) + N <b>workers</b> (exécutent). L'<b>autoscaling</b> fait varier N entre un min et un max.`,
-        `Coût = <b>DBU</b> (payés à Databricks, tarif selon le type de calcul) + VM Azure (en classique). L'<b>auto-termination</b> et les <b>cluster policies</b> sont les deux premiers garde-fous.`,
+        `Coût = <b>DBU</b> (payés à Databricks, tarif selon le type de calcul) + VM Azure (en classique). L'<b>auto-termination</b> et les <b>cluster policies</b> sont les deux premiers garde-fous. Une policy est un JSON où chaque champ est <b>fixed</b> (imposé), borné (<b>range</b>, <b>allowlist</b>) ou <b>unlimited</b>, et peut être masqué (<b>hidden</b>) : essaie-la dans le simulateur.`,
         `<b>Photon</b> : moteur d'exécution vectorisé en C++, nettement plus rapide sur le SQL et les DataFrames, avec un tarif DBU plus élevé.`,
         `La <b>Databricks Runtime</b> (DBR) fixe les versions de Spark, Delta et des bibliothèques. Préfère une version LTS en production.`
       ],
@@ -108,9 +108,9 @@ LIMIT 10;`
       id: `m3`, day: `J1`, title: `Unity Catalog`, sub: `Gouvernance, objets, droits, fédération`,
       points: [
         `Hiérarchie : <b>metastore</b> (un par région) → <b>catalogue</b> → <b>schéma</b> → tables, vues, volumes, fonctions, modèles. On nomme toujours en trois niveaux : <code>catalogue.schema.table</code>.`,
-        `<b>Table managée</b> : Unity Catalog gère les fichiers ; un DROP supprime les données (avec un délai permettant UNDROP). <b>Table externe</b> : tu fournis un chemin ; un DROP ne supprime que la métadonnée.`,
+        `<b>Table managée</b> : Unity Catalog gère les fichiers. Un DROP déclenche une suppression différée : les données restent récupérables avec <code>UNDROP TABLE</code> pendant 7 jours par défaut. <b>Table externe</b> : tu fournis un chemin ; un DROP ne supprime que la métadonnée et les fichiers restent dans ton stockage.`,
         `<b>Volume</b> : gouvernance des fichiers non tabulaires (CSV, JSON, images). Chemin : <code>/Volumes/catalogue/schema/volume/...</code>`,
-        `Accès au stockage : <b>storage credential</b> (l'identité) + <b>external location</b> (un chemin ADLS autorisé avec cette identité).`,
+        `Accès au stockage : <b>storage credential</b> (l'identité) + <b>external location</b> (un chemin ADLS autorisé avec cette identité). Côté Azure, l'identité de l'Access Connector doit en plus avoir un rôle RBAC sur le compte de stockage (Storage Blob Data Reader ou Contributor). Azure authentifie, Unity Catalog autorise : un refus peut venir de l'un ou de l'autre.`,
         `Droits : il faut <code>USE CATALOG</code> + <code>USE SCHEMA</code> + le privilège sur l'objet (<code>SELECT</code>, <code>MODIFY</code>...). Les droits s'héritent vers le bas. Attribue-les à des <b>groupes</b>, pas à des personnes.`,
         `<b>Lakehouse Federation</b> : une <i>connection</i> + un <i>foreign catalog</i> permettent d'interroger une base externe (SQL Server, PostgreSQL, Snowflake...) sans copier les données.`,
         `Le <b>lineage</b> (tables et colonnes) et les journaux d'audit sont collectés automatiquement.`,
@@ -219,6 +219,8 @@ print(jour.count())
       ],
       traps: [
         `<code>%run</code> et <code>dbutils.notebook.run</code> ne font pas la même chose : le premier partage les variables, le second lance une exécution isolée.`,
+        `Un <code>%pip install</code> au milieu du notebook relance l'interpréteur Python et efface les variables : place-le en tête.`,
+        `Partager un notebook en lecture alors que des résultats sensibles sont affichés : les sorties voyagent avec le notebook. Efface-les avant de partager.`,
         `Écrire des identifiants ou des mots de passe en dur dans une cellule.`,
         `Laisser toute la logique dans des notebooks géants : sors les fonctions réutilisables dans des fichiers Python testables.`
       ],
@@ -349,9 +351,9 @@ spark.sql("""
         `<b>Time travel</b> : <code>VERSION AS OF</code> / <code>TIMESTAMP AS OF</code> pour lire le passé, <code>RESTORE</code> pour y revenir, <code>DESCRIBE HISTORY</code> pour l'audit.`,
         `<b>MERGE INTO</b> = upsert : une seule instruction atomique pour mettre à jour, insérer et supprimer. C'est la brique des chargements incrémentaux et des dimensions à historique (SCD).`,
         `<b>Schema enforcement</b> : une écriture au schéma différent est rejetée. <b>Schema evolution</b> : on l'autorise explicitement (<code>mergeSchema</code>).`,
-        `<b>OPTIMIZE</b> compacte les petits fichiers. <b>Liquid clustering</b> (<code>CLUSTER BY</code>) organise les données par colonnes de filtre ; il remplace le partitionnement et le Z-ORDER pour les nouvelles tables.`,
-        `<b>VACUUM</b> supprime physiquement les fichiers qui ne sont plus référencés (rétention par défaut : 7 jours). Au-delà, le time travel vers ces versions n'est plus possible.`,
-        `<b>Deletion vectors</b> : un DELETE ou UPDATE marque les lignes au lieu de réécrire les fichiers. <b>Change Data Feed</b> : expose les changements ligne à ligne pour les traitements en aval.`,
+        `<b>OPTIMIZE</b> compacte les petits fichiers. <b>Liquid clustering</b> (<code>CLUSTER BY</code>) organise les données par colonnes de filtre ; il remplace le partitionnement et le Z-ORDER pour les nouvelles tables. Il est incompatible avec les deux sur une même table ; le Z-ORDER reste disponible sur les tables existantes.`,
+        `<b>VACUUM</b> supprime physiquement les fichiers qui ne sont plus référencés (rétention par défaut : 7 jours). Au-delà, le time travel vers ces versions n'est plus possible. L'historique du journal a sa propre rétention (30 jours par défaut) : deux seuils distincts.`,
+        `<b>Deletion vectors</b> : sur les tables où ils sont activés, un DELETE, un UPDATE ou un MERGE marque les lignes dans un petit fichier au lieu de réécrire le Parquet ; <code>OPTIMIZE</code> ou <code>REORG … APPLY (PURGE)</code> réécrit ensuite les fichiers. <b>Change Data Feed</b> : expose les changements ligne à ligne pour les traitements en aval.`,
         `<b>CLONE</b> : <i>shallow</i> (copie des métadonnées, idéal pour tester) ou <i>deep</i> (copie complète).`
       ],
       code: [
@@ -440,9 +442,9 @@ DESCRIBE DETAIL workspace.dojo.clients;`
         `Déclencheurs : planification cron, arrivée de fichier, mise à jour de table, continu, ou appel par API.`,
         `<b>Paramètres</b> : les paramètres de job se propagent à toutes les tâches ; un notebook les lit par <code>dbutils.widgets.get</code>. Les références dynamiques <code>{{job.start_time.iso_date}}</code> ou <code>{{job.parameters.nom}}</code> injectent le contexte.`,
         `<b>Task values</b> : une tâche publie une valeur (<code>dbutils.jobs.taskValues.set</code>), une tâche aval la lit. Complété par les tâches <i>If/else</i> et <i>For each</i>.`,
-        `Fiabilité : retries par tâche, timeouts, notifications, et <b>Repair run</b> qui ne relance que les tâches en échec.`,
+        `Fiabilité : retries par tâche, timeouts, notifications, et <b>Repair run</b> qui relance les tâches en échec et celles qui en dépendent, sans rejouer les tâches déjà réussies.`,
         `<b>Azure Data Factory</b> peut appeler un notebook via l'activité Databricks Notebook. Pertinent si ADF orchestre déjà le reste du SI ; sinon les jobs natifs suffisent et sont mieux intégrés.`,
-        `<b>Pipelines déclaratifs</b> (Lakeflow Declarative Pipelines, ex-Delta Live Tables) : tu déclares des <i>streaming tables</i> et des <i>materialized views</i> ; le moteur gère dépendances, incrémental, reprises et qualité via les <b>expectations</b>.`
+        `<b>Pipelines déclaratifs</b> (Lakeflow Spark Declarative Pipelines, ex-Delta Live Tables) : tu déclares des <i>streaming tables</i> et des <i>materialized views</i> ; le moteur gère dépendances, incrémental, reprises et qualité via les <b>expectations</b>.`
       ],
       code: [
         { t: `Passer une valeur entre tâches`, c: `# Tâche "controle"
@@ -450,6 +452,7 @@ nb = spark.read.table("workspace.dojo.courses_silver").count()
 dbutils.jobs.taskValues.set(key="nb_lignes", value=nb)
 
 # Tâche aval
+# Variante recommandée : référencer {{tasks.controle.values.nb_lignes}} dans les paramètres de la tâche
 nb = dbutils.jobs.taskValues.get(taskKey="controle", key="nb_lignes", default=0)
 if nb == 0:
     raise Exception("Aucune ligne à traiter")` },
@@ -466,6 +469,7 @@ FROM courses_bronze;` }
       ],
       traps: [
         `Enchaîner les notebooks avec <code>dbutils.notebook.run</code> dans un notebook « chef d'orchestre » : on perd la visibilité, les retries et le repair. Utilise un job multi-tâches.`,
+        `Un Repair run sur une tâche qui ajoute des lignes sans condition : elle les ajoute une seconde fois. Une tâche rejouable doit être idempotente.`,
         `Coder la date de traitement en dur : passe-la en paramètre pour pouvoir rejouer un jour passé.`,
         `Ne prévoir ni alerte ni retry : un échec nocturne se découvre le lendemain en réunion.`
       ],
@@ -499,16 +503,16 @@ spark.sql("""
         { q: `Que fait « Repair run » ?`, o: [`Il relance tout le job depuis le début`, `Il relance uniquement les tâches en échec et celles qui en dépendent`, `Il corrige le code automatiquement`, `Il restaure les tables à leur version précédente`], a: 1, e: `Les tâches déjà réussies ne sont pas rejouées : gain de temps et de coût.` },
         { q: `Comment transmettre une valeur calculée d'une tâche à la suivante ?`, o: [`Par une variable globale Python`, `Par les task values`, `Par un fichier sur le driver`, `Ce n'est pas possible`], a: 1, e: `dbutils.jobs.taskValues.set dans la tâche amont, .get dans la tâche aval.` },
         { q: `Dans un pipeline déclaratif, à quoi sert une expectation ?`, o: [`À planifier le pipeline`, `À déclarer une règle de qualité et l'action en cas de violation`, `À dimensionner le cluster`, `À donner des droits`], a: 1, e: `On peut tracer la violation, écarter la ligne (DROP ROW) ou faire échouer la mise à jour (FAIL UPDATE).` },
-        { q: `Quel est l'ancien nom des pipelines déclaratifs Lakeflow ?`, o: [`Auto Loader`, `Delta Live Tables`, `Delta Sharing`, `Workflows`], a: 1, e: `Delta Live Tables (DLT) a été renommé Lakeflow Declarative Pipelines ; Workflows est devenu Lakeflow Jobs.` },
+        { q: `Quel est l'ancien nom des pipelines déclaratifs Lakeflow ?`, o: [`Auto Loader`, `Delta Live Tables`, `Delta Sharing`, `Workflows`], a: 1, e: `Delta Live Tables (DLT) a été renommé Lakeflow Spark Declarative Pipelines ; Workflows est devenu Lakeflow Jobs.` },
         { q: `Quand ADF est-il un choix raisonnable pour orchestrer Databricks ?`, o: [`Toujours, les jobs natifs sont limités`, `Quand ADF orchestre déjà des traitements hors Databricks dans le SI`, `Jamais, c'est incompatible`, `Seulement pour le streaming`], a: 1, e: `ADF garde son intérêt comme orchestrateur transverse ; pour du pur Databricks, les jobs natifs sont plus simples.` }
       ],
       cards: [
         [`Job et tâche`, `Un job est un graphe de tâches dépendantes (notebook, SQL, Python, pipeline, dbt...).`],
         [`Task values`, `Mécanisme pour passer de petites valeurs d'une tâche à une autre dans un job.`],
-        [`Repair run`, `Relance seulement les tâches en échec d'une exécution, sans rejouer celles qui ont réussi.`],
+        [`Repair run`, `Relance les tâches en échec et celles qui en dépendent, sans rejouer celles qui ont réussi. La tâche repart de zéro : sans idempotence, elle peut dupliquer des données.`],
         [`Streaming table vs materialized view`, `Streaming table : ingestion incrémentale en ajout. Materialized view : résultat précalculé, rafraîchi par le pipeline.`],
         [`Expectations : 3 comportements`, `Tracer seulement, DROP ROW, FAIL UPDATE.`],
-        [`Renommages Lakeflow`, `Workflows → Lakeflow Jobs. Delta Live Tables → Lakeflow Declarative Pipelines.`]
+        [`Renommages Lakeflow`, `Workflows → Lakeflow Jobs. Delta Live Tables → Lakeflow Spark Declarative Pipelines.`]
       ]
     },
     {
@@ -549,7 +553,7 @@ WHERE fare_amount <= 0 OR trip_distance <= 0;
           `Dans l'éditeur SQL, écris la requête paramétrée ci-dessus et enregistre-la.`,
           `Ajoute une visualisation en courbe sur le résultat.`,
           `Crée un dashboard avec deux widgets : un compteur (CA total) et la courbe du CA par jour, plus un filtre de dates.`,
-          `Crée une alerte à partir de la requête qualité.`,
+          `Crée une alerte avec le SQL de la requête qualité (dans les alertes récentes le SQL s'écrit dans l'alerte elle-même ; les alertes « legacy » pointaient vers une requête enregistrée).`,
           `Repère dans Connection details du warehouse le <b>Server hostname</b> et le <b>HTTP path</b> que demandera Power BI.`
         ],
         sol: `-- Jeu de données du dashboard
@@ -576,7 +580,7 @@ GROUP BY jour, pickup_zip;`
       id: `m9`, day: `Après`, title: `Ingestion incrémentale et streaming`, sub: `COPY INTO, Auto Loader, Structured Streaming`,
       points: [
         `<b>COPY INTO</b> : commande SQL idempotente qui charge les nouveaux fichiers d'un dossier. Simple, adaptée aux volumes modestes.`,
-        `<b>Auto Loader</b> (format <code>cloudFiles</code>) : détecte et ingère les nouveaux fichiers à grande échelle, infère le schéma et le fait évoluer. Les données inattendues vont dans la colonne <code>_rescued_data</code>.`,
+        `<b>Auto Loader</b> (format <code>cloudFiles</code>) : détecte et ingère les nouveaux fichiers à grande échelle, infère le schéma et le fait évoluer. Par défaut, le flux s'arrête quand une nouvelle colonne apparaît et reprend au redémarrage : on le lance donc dans un job qui sait le relancer. Les données inattendues vont dans la colonne <code>_rescued_data</code>.`,
         `En SQL, <code>read_files()</code> lit des fichiers directement ; avec <code>STREAM</code> dans un pipeline, il s'appuie sur Auto Loader.`,
         `<b>Structured Streaming</b> : un flux est une table qui grandit. Le moteur traite par micro-lots et mémorise sa progression dans un <b>checkpoint</b>.`,
         `Le checkpoint est ce qui garantit le traitement « exactement une fois » vers Delta. Un checkpoint par flux, jamais partagé, jamais supprimé à la légère.`,
@@ -705,13 +709,13 @@ WHERE jour = '2016-01-15' GROUP BY pickup_zip;
         [`Les 4 symptômes de la Spark UI`, `Skew, spill, shuffle massif, petits fichiers.`],
         [`Table système des coûts`, `system.billing.usage`],
         [`Skew : définition`, `Répartition très inégale des données entre partitions ; une task concentre le travail.`],
-        [`Predictive optimization`, `Maintenance automatique (OPTIMIZE, VACUUM) des tables managées Unity Catalog.`]
+        [`Predictive optimization`, `Maintenance automatique (OPTIMIZE, VACUUM, ANALYZE) des tables managées Unity Catalog. Elle ne couvre ni les tables externes ni les tables reçues par partage.`]
       ]
     },
     {
       id: `m11`, day: `Après`, title: `Industrialisation`, sub: `Asset Bundles, CI/CD, environnements, tests`,
       points: [
-        `<b>Databricks Asset Bundles</b> (DABs) : le projet (code + définition des jobs, pipelines, dashboards) est décrit en YAML dans <code>databricks.yml</code> et versionné dans Git.`,
+        `<b>Databricks Asset Bundles</b> (DABs, rebaptisés Declarative Automation Bundles dans la documentation récente ; les commandes et le fichier <code>databricks.yml</code> sont inchangés) : le projet (code + définition des jobs, pipelines, dashboards) est décrit en YAML dans <code>databricks.yml</code> et versionné dans Git.`,
         `Cycle : <code>databricks bundle validate</code>, <code>deploy -t dev</code>, <code>run</code>. Les <b>targets</b> (dev, recette, prod) portent les différences d'environnement : workspace, catalogue, identité d'exécution.`,
         `En production, les jobs s'exécutent sous un <b>service principal</b>, jamais sous le compte d'une personne.`,
         `Isolation des environnements : au minimum un catalogue par environnement (<code>ventes_dev</code>, <code>ventes_prod</code>), idéalement un workspace par environnement.`,
@@ -830,7 +834,7 @@ databricks bundle run <nom_du_job> -t dev`
     [`Catalyst`, `L'optimiseur de requêtes de Spark.`],
     [`CDF`, `Change Data Feed : flux des changements d'une table Delta.`],
     [`Checkpoint`, `État de progression d'un flux Structured Streaming.`],
-    [`DABs`, `Databricks Asset Bundles : projet et ressources décrits en YAML.`],
+    [`DABs`, `Databricks Asset Bundles, rebaptisés Declarative Automation Bundles dans la documentation récente : projet et ressources décrits en YAML.`],
     [`DBR`, `Databricks Runtime : image qui fixe les versions de Spark, Delta et des bibliothèques.`],
     [`DBU`, `Databricks Unit : unité de facturation de la plateforme.`],
     [`Delta Lake`, `Format de table ouvert : Parquet + journal de transactions.`],

@@ -4,7 +4,7 @@
 (function () {
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const alive = root => root.isConnected;
-  const money = n => Math.round(n).toLocaleString('fr-FR') + ' $';
+  const money = n => Math.round(n).toLocaleString('fr-FR') + ' €';
   const SIMS = [];
 
   /* ---------- 1. Architecture ---------- */
@@ -58,16 +58,17 @@
   SIMS.push({
     id: 'cout', mod: 'm2', title: 'La facture d\'un pipeline nocturne',
     tag: 'Même traitement, même cluster : seul le type de calcul change.',
-    mission: 'Passe sous 250 $ par mois sans toucher aux workers ni à la durée.',
+    mission: 'Passe sous 250 € par mois sans toucher aux workers ni à la durée.',
     mount(root, win) {
-      const st = { type: 'all', workers: 8, hours: 2, auto: false };
-      const DBU = 0.75, VM = 0.29, RATE = { all: 0.55, job: 0.30 }, DAYS = 22;
+      const st = { type: 'all', workers: 4, hours: 2, auto: false };
+      // Tarifs indicatifs : VM D4ds_v5 ≈ 0,24 €/h, 2 DBU/h par nœud, DBU all-purpose 0,484 €, DBU jobs 0,264 €.
+      const DBU_H = 2, PRICE = { all: 0.484, job: 0.264 }, VM = 0.24, DAYS = 22;
       const cost = s => {
         const billed = s.type === 'job' ? s.hours : (s.auto ? s.hours + 0.5 : 24);
-        const base = (s.workers + 1) * billed * DAYS;
-        return { billed, dbu: base * DBU * RATE[s.type], vm: base * VM };
+        const nodeHours = (s.workers + 1) * billed * DAYS;
+        return { billed, dbu: nodeHours * DBU_H * PRICE[s.type], vm: nodeHours * VM };
       };
-      const ref = cost({ type: 'all', workers: 8, hours: 2, auto: false }), refTotal = ref.dbu + ref.vm;
+      const ref = cost({ type: 'all', workers: 4, hours: 2, auto: false }), refTotal = ref.dbu + ref.vm;
       const draw = () => {
         const c = cost(st), total = c.dbu + c.vm, pct = Math.max(2, 100 * total / refTotal);
         root.innerHTML = `
@@ -86,8 +87,8 @@
               <p class="muted">Cluster facturé <b>${c.billed} h par jour</b>${st.type === 'all' && !st.auto ? ' : il reste allumé jour et nuit' : st.type === 'job' ? ' : il n\'existe que le temps du run' : ''}. Configuration de départ : ${money(refTotal)}.</p>
             </div>
           </div>
-          <p class="fine">Tarifs indicatifs pour raisonner en ordres de grandeur, pas un devis.</p>`;
-        if (total < 250 && st.workers === 8 && st.hours === 2) win();
+          <p class="fine">Tarifs indicatifs pour raisonner en ordres de grandeur : VM D4ds_v5 ≈ 0,24 €/h, 2 DBU/h par nœud, DBU all-purpose ≈ 0,484 €, DBU jobs ≈ 0,264 €. À vérifier sur la grille Azure du moment.</p>`;
+        if (total < 250 && st.workers === 4 && st.hours === 2) win();
       };
       root.onclick = e => { const b = e.target.closest('button[data-type]'); if (b) { st.type = b.dataset.type; draw(); } };
       root.onchange = e => { const f = e.target.dataset.f; if (!f) return; st[f] = f === 'auto' ? e.target.checked : +e.target.value; draw(); };
@@ -244,8 +245,8 @@
       };
       const OPS = {
         insert() { const p = NEW[(st.nid - 4) % NEW.length]; commit('INSERT', [[{ id: st.nid++, nom: p[0], pays: p[1] }]], []); st.msg = 'INSERT : un nouveau fichier, rien n\'est réécrit.'; },
-        update() { const f = at(last()).find(x => R(x).length); if (!f) return; const rows = R(f).map((r, i) => i ? r : { ...r, pays: r.pays === 'BE' ? 'FR' : 'BE' }); commit('UPDATE', [rows], [f]); st.msg = 'UPDATE : Parquet est immuable. Le fichier est réécrit en entier, l\'ancien est retiré du journal mais reste sur le disque.'; },
-        del() { const fs = at(last()).filter(x => R(x).length), f = fs[fs.length - 1]; if (!f) return; const rows = R(f).slice(0, -1); commit('DELETE', rows.length ? [rows] : [], [f]); st.msg = 'DELETE : même mécanique, le fichier touché est remplacé.'; },
+        update() { const f = at(last()).find(x => R(x).length); if (!f) return; const rows = R(f).map((r, i) => i ? r : { ...r, pays: r.pays === 'BE' ? 'FR' : 'BE' }); commit('UPDATE', [rows], [f]); st.msg = 'UPDATE : Parquet est immuable. Sans deletion vectors, le fichier est réécrit en entier ; l\'ancien est retiré du journal mais reste sur le disque.'; },
+        del() { const fs = at(last()).filter(x => R(x).length), f = fs[fs.length - 1]; if (!f) return; const rows = R(f).slice(0, -1); commit('DELETE', rows.length ? [rows] : [], [f]); st.msg = 'DELETE : même mécanique, le fichier touché est remplacé (avec les deletion vectors, les lignes sont seulement marquées).'; },
         merge() { const f = at(last()).find(x => R(x).length); if (!f) return; const p = NEW[(st.nid - 4) % NEW.length]; const rows = R(f).map((r, i) => i ? r : { ...r, nom: r.nom.toUpperCase() }); commit('MERGE', [rows, [{ id: st.nid++, nom: p[0], pays: p[1] }]], [f]); st.msg = 'MERGE : mise à jour et insertion dans un seul commit atomique.'; },
         optimize() { const fs = at(last()); if (fs.length < 2) { st.msg = 'Un seul fichier actif : rien à compacter.'; return; } commit('OPTIMIZE', [fs.flatMap(R)], fs); st.msg = 'OPTIMIZE : les petits fichiers sont compactés en un seul. Les données ne changent pas.'; },
         vacuum() { const now = at(last()).map(e => e.n), dead = Object.keys(st.phys).filter(n => !st.phys[n].gone && !now.includes(+n)); dead.forEach(n => st.phys[n].gone = true); st.msg = dead.length ? 'VACUUM : ' + dead.length + ' fichier(s) supprimé(s) du disque. On simule ici une rétention dépassée (7 jours par défaut).' : 'Rien à nettoyer : tous les fichiers sont utilisés par la version actuelle.'; },
@@ -456,6 +457,53 @@
           }
           draw();
         }, 600 * (i + 1)));
+        draw();
+      };
+      draw();
+    }
+  });
+
+  /* ---------- 12. Cluster policy ---------- */
+  SIMS.push({
+    id: 'policy', mod: 'm2', title: 'Créer un cluster sous policy',
+    tag: 'Remplis le formulaire : la policy verrouille certains champs, en borne d\'autres et en masque.',
+    mission: 'Crée un cluster accepté par la policy à moins de 1,30 € de l\'heure.',
+    mount(root, win) {
+      const POLICY = {
+        autotermination_minutes: { type: 'fixed', value: 20 },
+        node_type_id: { type: 'allowlist', values: ['Standard_D4ds_v5', 'Standard_D8ds_v5'], defaultValue: 'Standard_D4ds_v5' },
+        num_workers: { type: 'fixed', value: 0, hidden: true },
+        data_security_mode: { type: 'fixed', value: 'SINGLE_USER' },
+        spark_version: { type: 'unlimited', defaultValue: 'auto:latest-lts' }
+      };
+      const NODES = { Standard_D4ds_v5: [0.24, 2], Standard_D8ds_v5: [0.48, 4], Standard_D16ds_v5: [0.96, 8] };
+      const st = { auto: 60, node: 'Standard_D16ds_v5', mode: 'USER_ISOLATION', res: null };
+      const draw = () => {
+        const r = st.res;
+        root.innerHTML = `
+          <div class="sim-cols">
+            <div class="ctrl">
+              <span class="zlabel">Create compute</span>
+              <label for="p-auto">Terminate after (minutes d'inactivité)</label><input id="p-auto" type="number" min="5" max="600" value="${st.auto}">
+              <label for="p-node">Node type</label><select id="p-node">${Object.keys(NODES).map(n => `<option value="${n}"${n === st.node ? ' selected' : ''}>${n}</option>`).join('')}</select>
+              <label for="p-mode">Access mode</label><select id="p-mode">${[['SINGLE_USER', 'Dedicated (single user)'], ['USER_ISOLATION', 'Standard (shared)'], ['NONE', 'No isolation shared']].map(m => `<option value="${m[0]}"${m[0] === st.mode ? ' selected' : ''}>${m[1]}</option>`).join('')}</select>
+              <label for="p-w">Workers</label><input id="p-w" type="number" value="0" disabled><span class="fine">Champ masqué par la policy : valeur imposée 0 (single node).</span>
+              <button class="b-primary" data-a="create">Create</button>
+            </div>
+            <div><span class="zlabel">Policy (JSON)</span><pre class="mini">${esc(JSON.stringify(POLICY, null, 2))}</pre></div>
+          </div>
+          ${r ? (r.errs.length ? `<div class="result ko"><b>Création refusée</b><ul>${r.errs.map(e => '<li>' + e + '</li>').join('')}</ul></div>` : `<div class="result ok"><b>Cluster créé</b> · ${r.cost.toFixed(2).replace('.', ',')} € de l'heure (VM ${r.vm.toFixed(2).replace('.', ',')} € + ${r.dbu} DBU)<br>Oublié 15 heures : <b>${(r.cost * 15).toFixed(0)} €</b> sans arrêt automatique, <b>${(r.cost / 3).toFixed(2).replace('.', ',')} €</b> avec les 20 minutes imposées.</div>`) : '<div class="sim-note">Essaie de créer le cluster tel quel, puis corrige ce que la policy refuse.</div>'}`;
+      };
+      root.onchange = e => { const id = e.target.id; if (id === 'p-auto') st.auto = +e.target.value; if (id === 'p-node') st.node = e.target.value; if (id === 'p-mode') st.mode = e.target.value; };
+      root.onclick = e => {
+        if (!e.target.closest('[data-a="create"]')) return;
+        const errs = [];
+        if (st.auto !== POLICY.autotermination_minutes.value) errs.push('<code>autotermination_minutes</code> est <b>fixed</b> : la policy impose ' + POLICY.autotermination_minutes.value + ' minutes, pas ' + st.auto + '.');
+        if (!POLICY.node_type_id.values.includes(st.node)) errs.push('<code>node_type_id</code> est une <b>allowlist</b> : ' + st.node + ' n\'en fait pas partie (autorisés : ' + POLICY.node_type_id.values.join(', ') + ').');
+        if (st.mode !== POLICY.data_security_mode.value) errs.push('<code>data_security_mode</code> est <b>fixed</b> à SINGLE_USER (Dedicated).');
+        const n = NODES[st.node];
+        st.res = { errs, vm: n[0], dbu: n[1], cost: n[0] + n[1] * 0.484 };
+        if (!errs.length && st.res.cost < 1.3) win();
         draw();
       };
       draw();
