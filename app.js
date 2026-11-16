@@ -2,26 +2,28 @@
 (function () {
   const D = window.DOJO, SIMS = window.SIMS, KEY = 'lakehouse-dojo-v1', DAY = 864e5;
   const LEITNER = [0, 1, 3, 7, 14, 30];
-  const blank = () => ({ done: {}, labs: {}, quiz: {}, cards: {}, notes: {}, asked: {}, projet: {}, sims: {}, board: false });
+  const blank = () => ({ done: {}, labs: {}, quiz: {}, cards: {}, notes: {}, asked: {}, projet: {}, sims: {}, board: false, lab: { done: {}, hints: {}, drafts: {}, follow: {} } });
   let S = blank();
   try { Object.assign(S, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { } };
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const $ = id => document.getElementById(id);
   const mod = id => D.modules.find(m => m.id === id);
-  const simOf = m => SIMS.find(s => s.mod === m.id);
+  const simsOf = m => SIMS.filter(s => s.mod === m.id);
   const num = m => D.modules.indexOf(m) + 1;
   const PARTS = { J1: 'Les fondations', J2: 'Construire', J3: 'Livrer', 'Après': 'Passer expert' };
   const DOMAINS = [['Plateforme', ['m1', 'm2']], ['Gouvernance', ['m3']], ['Développement', ['m4', 'm5']], ['Delta Lake', ['m6']], ['Orchestration', ['m7', 'm9']], ['SQL et BI', ['m8']], ['Production', ['m10', 'm11']]];
-  const BELTS = [[0, 'blanche', '#f3f2ec'], [100, 'jaune', '#f0c531'], [250, 'orange', '#ea8a2d'], [450, 'verte', '#3f9b5a'], [650, 'bleue', '#2f72cf'], [850, 'marron', '#7b4d2c'], [1050, 'noire', '#20201f']];
+  const BELTS = [[0, 'blanche', '#f3f2ec'], [100, 'jaune', '#f0c531'], [250, 'orange', '#ea8a2d'], [450, 'verte', '#3f9b5a'], [700, 'bleue', '#2f72cf'], [1000, 'marron', '#7b4d2c'], [1300, 'noire', '#20201f']];
 
   const allCards = () => D.modules.flatMap(m => m.cards.map((c, i) => ({ id: m.id + '-' + i, m, q: c[0], a: c[1] })));
   const dueCards = () => allCards().filter(c => !S.cards[c.id] || S.cards[c.id].d <= Date.now());
   const anchored = () => Object.values(S.cards).filter(c => c.b >= 2).length;
   const quizOk = m => (S.quiz[m.id] || 0) >= 0.8;
-  const proofs = m => [!!S.done[m.id], !!S.sims[simOf(m).id], !!S.labs[m.id], quizOk(m)];
+  const proofs = m => [!!S.done[m.id], simsOf(m).every(s => S.sims[s.id]), !!S.labs[m.id], quizOk(m)];
   const cnt = o => Object.values(o).filter(Boolean).length;
-  const xp = () => cnt(S.done) * 20 + cnt(S.labs) * 40 + D.modules.filter(quizOk).length * 30 + cnt(S.sims) * 15 + anchored() * 2;
+  const labDone = id => !!(S.lab && S.lab.done && S.lab.done[id] != null);
+  const labXp = () => Object.values((S.lab && S.lab.done) || {}).reduce((a, b) => a + b, 0);
+  const xp = () => cnt(S.done) * 20 + cnt(S.labs) * 40 + D.modules.filter(quizOk).length * 30 + cnt(S.sims) * 15 + anchored() * 2 + labXp() + ((S.exam && S.exam.xp) || 0);
   const beltIdx = v => BELTS.reduce((k, b, i) => v >= b[0] ? i : k, 0);
   const beltHtml = i => '<span class="belt" style="--belt:' + BELTS[i][2] + '" role="img" aria-label="Ceinture ' + BELTS[i][1] + '"></span>';
 
@@ -33,7 +35,11 @@
     ['J', 'Gardien du journal', 'Mission Delta réussie', () => !!S.sims.delta],
     ['L', 'Mémoire longue', 'Vingt flashcards ancrées', () => anchored() >= 20],
     ['C', 'Socle complet', 'Huit premiers modules maîtrisés', () => D.modules.slice(0, 8).every(m => S.done[m.id])],
-    ['N', 'Ceinture noire', '1 050 XP', () => xp() >= 1050]
+    ['D', 'Détective', 'Registre des défauts établi', () => labDone('m1')],
+    ['Z', 'Bilan bouclé', 'Silver, rejets et doublons réconciliés', () => labDone('m3')],
+    ['I', 'Idempotent', 'Un upsert rejouable sans dégât', () => labDone('m7')],
+    ['X', 'Certifiable', 'Examen blanc réussi à 70 %', () => !!(S.exam && S.exam.best >= 0.7)],
+    ['N', 'Ceinture noire', '1 300 XP', () => xp() >= 1300]
   ];
   const earned = () => SEALS.filter(s => s[3]()).map(s => s[1]);
 
@@ -49,6 +55,7 @@
     const w = c.width = innerWidth, h = c.height = innerHeight, g = c.getContext('2d');
     const P = Array.from({ length: 90 }, (_, i) => ({ x: w / 2, y: h * 0.35, vx: (Math.random() - 0.5) * 14, vy: -Math.random() * 12 - 3, c: BELTS[1 + i % 5][2], r: 4 + Math.random() * 4, a: Math.random() * 6 }));
     let n = 0;
+    setTimeout(() => c.remove(), 3500); // filet de sécurité si le navigateur suspend l'animation
     (function tick() {
       g.clearRect(0, 0, w, h);
       P.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.35; p.a += 0.2; g.save(); g.translate(p.x, p.y); g.rotate(p.a); g.fillStyle = p.c; g.fillRect(-p.r, -p.r / 2, p.r * 2, p.r); g.restore(); });
@@ -65,7 +72,15 @@
   }
 
   /* ---------- rail ---------- */
-  const TABS = [['', 'Accueil'], ['parcours', 'Parcours'], ['atelier', 'Simulateurs'], ['quiz', 'Quiz'], ['cartes', 'Flashcards'], ['labs', 'Labs'], ['memo', 'Mémo']];
+  const TABS = [['', 'Accueil'], ['parcours', 'Parcours'], ['atelier', 'Simulateurs'], ['labo', 'Labo SQL'], ['examen', 'Examen blanc'], ['quiz', 'Quiz'], ['cartes', 'Flashcards'], ['labs', 'Labs Databricks'], ['memo', 'Mémo']];
+  const ctx = {
+    get S() { return S; }, save, confetti, reward, toast, profile,
+    replaceS(s) { S = Object.assign(blank(), s); prev = { xp: xp(), belt: beltIdx(xp()), seals: earned() }; save(); render(); }
+  };
+  function profile() {
+    const v = xp(), b = beltIdx(v), score = ms => ms.reduce((t, id) => t + proofs(mod(id)).filter(Boolean).length, 0) / (ms.length * 4);
+    return { xp: v, belt: { name: BELTS[b][1], color: BELTS[b][2] }, seals: SEALS.filter(s => s[3]()).map(s => ({ l: s[0], name: s[1] })), missions: Object.keys((S.lab && S.lab.done) || {}).length, sims: cnt(S.sims), domains: DOMAINS.map(d => ({ n: d[0], score: score(d[1]) })) };
+  }
   let tab = '';
   function rail() {
     const v = xp(), b = beltIdx(v), nx = BELTS[b + 1], lo = BELTS[b][0], due = dueCards().length;
@@ -73,7 +88,8 @@
       '<div class="me">' + beltHtml(b) + '<div><b>Ceinture ' + BELTS[b][1] + '</b> <small>' + v + ' XP</small></div>' +
       '<div class="bar"><i style="width:' + (nx ? 100 * (v - lo) / (nx[0] - lo) : 100) + '%"></i></div></div>' +
       '<div class="links">' + TABS.map(([r, l]) => '<a class="' + (tab === r ? 'on' : '') + '" href="#' + (r || 'accueil') + '">' + l +
-        (r === 'cartes' && due ? '<span class="count">' + due + '</span>' : '') + '</a>').join('') + '</div>';
+        (r === 'cartes' && due ? '<span class="count">' + due + '</span>' : '') + (r === 'labo' || r === 'examen' ? '<span class="count new">nouveau</span>' : '') + '</a>').join('') + '</div>' +
+      '<div class="rail-tools"><button class="small" id="palette-btn">Rechercher <kbd>Ctrl K</kbd></button><button class="small" id="theme-btn">Thème : ' + window.Extras.themeLabel() + '</button></div>';
   }
 
   /* ---------- accueil ---------- */
@@ -93,11 +109,11 @@
     const next = D.modules.find(m => proofs(m).includes(false));
     return '<section class="panel hero"><div class="head" style="gap:14px">' +
       '<span class="eyebrow">Databricks pour data engineers</span><h1>Apprends Databricks en le manipulant</h1>' +
-      '<p class="lead">Onze modules, onze simulateurs. Tu casses un job, tu remontes le temps dans une table Delta, tu fais baisser une facture, puis tu refais tout pour de vrai dans ton workspace.</p>' +
+      '<p class="lead">Onze modules, douze simulateurs et un vrai moteur SQL dans ton navigateur. Tu casses un job, tu remontes le temps dans une table Delta, tu traques les défauts d\'une banque fictive de la bronze à la gold, puis tu refais tout pour de vrai dans ton workspace.</p>' +
       beltHtml(b) +
       '<div class="xp">' + v + ' <small>XP · ceinture ' + BELTS[b][1] + (nx ? ' · encore ' + (nx[0] - v) + ' XP avant la ceinture ' + nx[1] : '') + '</small></div>' +
       '<div class="hstack">' + (next ? '<a class="btn b-primary" href="#module-' + next.id + '">' + (v ? 'Continuer : ' : 'Commencer : ') + esc(next.title) + '</a>' : '') +
-      '<a class="btn" href="#sim-delta">Essayer le simulateur Delta</a></div></div>' + radar() + '</section>' +
+      '<a class="btn" href="#labo">Ouvrir le Labo SQL</a><a class="btn" href="#sim-delta">Essayer le simulateur Delta</a></div></div>' + radar() + '</section>' +
 
       '<section class="panel"><div class="hstack between"><h2>Le chemin</h2><span class="muted">Chaque anneau se remplit avec la leçon, le simulateur, le lab et le quiz.</span></div><div class="journey">' +
       D.modules.map(m => '<a class="stop" href="#module-' + m.id + '"><span class="ring" style="--p:' + proofs(m).filter(Boolean).length * 25 + '"><b>' + num(m) + '</b></span>' + esc(m.title) + '</a>').join('') + '</div></section>' +
@@ -112,7 +128,7 @@
       '<section class="panel"><div class="head"><h2>Projet fil rouge</h2><p class="muted">Un pipeline complet que tu peux montrer et expliquer : c\'est lui qui te rend crédible.</p></div>' +
       D.projet.map((t, i) => '<label class="chk"><input type="checkbox" id="pj' + i + '" data-projet="' + i + '"' + (S.projet[i] ? ' checked' : '') + '><span>' + t + '</span></label>').join('') + '</section>' +
 
-      '<div class="hstack"><button id="export">Copier mes notes</button><button id="reset">Réinitialiser ma progression</button></div><div id="export-out"></div>';
+      '<div class="hstack"><button id="card-btn" class="b-primary">Ma carte de profil</button><button id="save-btn">Sauvegarder ma progression</button><button id="load-btn">Restaurer</button><input type="file" id="load-file" accept="application/json,.json" hidden><button id="export">Copier mes notes</button><button id="reset">Réinitialiser ma progression</button></div><div id="export-out"></div>';
   }
 
   /* ---------- parcours et module ---------- */
@@ -134,7 +150,7 @@
     const m = mod(id); if (!m) return parcours();
     const i = D.modules.indexOf(m), pv = D.modules[i - 1], nx = D.modules[i + 1];
     return '<div class="head"><p class="crumb"><a href="#parcours">Parcours</a> / ' + PARTS[m.day] + ' / module ' + (i + 1) + '</p><h1>' + esc(m.title) + '</h1><p class="muted">' + esc(m.sub) + '</p></div>' +
-      simFrame(simOf(m)) +
+      simsOf(m).map(simFrame).join('') +
       '<section class="panel"><h2>L\'essentiel</h2><ul class="pts">' + m.points.map(p => '<li>' + p + '</li>').join('') + '</ul></section>' +
       (m.code.length ? '<section class="panel"><h2>Code à connaître</h2>' + m.code.map((c, k) => codeBlock(c, k)).join('') + '</section>' : '') +
       '<section class="panel"><h2>Pièges</h2><ul class="traps">' + m.traps.map(t => '<li>' + t + '</li>').join('') + '</ul></section>' +
@@ -149,7 +165,7 @@
       (pv ? '<a class="btn" href="#module-' + pv.id + '">← ' + esc(pv.title) + '</a>' : '') + (nx ? '<a class="btn" href="#module-' + nx.id + '">' + esc(nx.title) + ' →</a>' : '') + '</div>';
   }
   function atelier() {
-    return '<div class="head"><h1>Simulateurs</h1><p class="muted">Onze mécanismes à manipuler. Chacun a une mission : ' + cnt(S.sims) + ' réussies sur ' + SIMS.length + '.</p></div><div class="list">' +
+    return '<div class="head"><h1>Simulateurs</h1><p class="muted">Douze mécanismes à manipuler. Chacun a une mission : ' + cnt(S.sims) + ' réussies sur ' + SIMS.length + '.</p></div><div class="list">' +
       SIMS.map(s => '<a class="mcard' + (S.sims[s.id] ? ' full' : '') + '" href="#sim-' + s.id + '"><span class="num">' + (S.sims[s.id] ? '✓' : num(mod(s.mod))) + '</span><span><b>' + esc(s.title) + '</b><small>' + esc(s.tag) + '</small></span>' +
         '<span class="pips"><span class="pip">' + esc(mod(s.mod).title) + '</span></span></a>').join('') + '</div>';
   }
@@ -208,9 +224,8 @@
       D.modules.map(m => '<a class="mcard' + (S.labs[m.id] ? ' full' : '') + '" href="#module-' + m.id + '"><span class="num">' + (S.labs[m.id] ? '✓' : num(m)) + '</span><span><b>' + esc(m.lab.title) + '</b><small>' + esc(m.title) + '</small></span><span class="pips"><span class="pip">' + m.lab.time + '</span></span></a>').join('') + '</div>';
   }
   function memoView() {
-    return '<div class="head"><h1>Mémo</h1><p class="muted">Le vocabulaire, et les équivalences si tu viens de Snowflake.</p></div>' +
-      '<section class="panel"><h2>Snowflake → Databricks</h2><div class="scroll"><table class="plain"><tr><th>Snowflake</th><th>Databricks</th><th>À retenir</th></tr>' +
-      D.mapping.map(r => '<tr><td>' + esc(r[0]) + '</td><td><b>' + esc(r[1]) + '</b></td><td class="muted">' + esc(r[2]) + '</td></tr>').join('') + '</table></div></section>' +
+    return '<div class="head"><h1>Mémo</h1><p class="muted">Le vocabulaire, et un traducteur si tu viens d\'un autre outil.</p></div>' +
+      '<section class="panel" id="translator">' + window.Extras.translatorHtml(S.bg || 'snowflake') + '</section>' +
       '<section class="panel"><h2>Glossaire</h2><input class="search" id="gsearch" placeholder="Filtrer un terme…" aria-label="Filtrer le glossaire"><div class="scroll"><table class="plain" id="gtable">' +
       D.glossary.map(g => '<tr><td><b>' + esc(g[0]) + '</b></td><td>' + esc(g[1]) + '</td></tr>').join('') + '</table></div></section>';
   }
@@ -219,6 +234,8 @@
   function render() {
     const h = location.hash.replace(/^#/, ''), k = h.indexOf('-'), r = k < 0 ? h : h.slice(0, k), arg = k < 0 ? '' : h.slice(k + 1);
     let html;
+    if (r === 'labo') { tab = 'labo'; $('view').innerHTML = ''; rail(); window.SQLLab.mount($('view'), ctx, arg); return; }
+    if (r === 'examen') { tab = 'examen'; $('view').innerHTML = ''; rail(); window.Extras.exam($('view'), ctx); return; }
     if (r === 'parcours') { html = parcours(); tab = 'parcours'; }
     else if (r === 'module') { html = moduleView(arg); tab = 'parcours'; }
     else if (r === 'atelier') { html = atelier(); tab = 'atelier'; }
@@ -257,9 +274,14 @@
   }
   let armed = false;
   document.addEventListener('click', e => {
-    if (e.target.closest('.sim')) return; // les simulateurs gèrent leurs propres clics
+    if (e.target.closest('.sim, .lab')) return; // les simulateurs et le labo gèrent leurs propres clics
     const t = e.target.closest('button'); if (!t) return;
     const d = t.dataset;
+    if (t.id === 'palette-btn') { window.Extras.openPalette(); return; }
+    if (t.id === 'theme-btn') { window.Extras.cycleTheme(); rail(); return; }
+    if (t.id === 'card-btn') { window.Extras.openCard(); return; }
+    if (t.id === 'save-btn') { window.Extras.exportProgress(); return; }
+    if (t.id === 'load-btn') { $('load-file').click(); return; }
     if (d.copy != null) { const pre = $('code' + d.copy); copyText(pre.textContent, t, 'Copier'); const r = document.createRange(); r.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(r); return; }
     if (t.id === 'export') { const md = notesMd(); $('export-out').innerHTML = '<textarea id="export-ta" readonly aria-label="Notes au format Markdown"></textarea>'; $('export-ta').value = md; $('export-ta').select(); copyText(md, t, 'Copier mes notes'); return; }
     if (t.id === 'reset') { if (!armed) { armed = true; t.textContent = 'Confirmer : tout effacer'; t.className = 'b-warn'; return; } armed = false; S = Object.assign(blank(), { board: S.board }); prev = { xp: 0, belt: 0, seals: [] }; }
@@ -289,6 +311,7 @@
     else if (F.back && (e.key === '1' || e.key === '2')) { grade(e.key === '2'); save(); render(); reward(); }
   });
   document.addEventListener('change', e => {
+    if (e.target.id === 'load-file' && e.target.files[0]) { window.Extras.importProgress(e.target.files[0]); e.target.value = ''; return; }
     const d = e.target.dataset;
     if (d.ask) { S.asked[d.ask] = e.target.checked; save(); }
     if (d.projet != null) { S.projet[d.projet] = e.target.checked; save(); }
@@ -356,6 +379,7 @@
     if (B.state === 'readonly') { const p = document.createElement('p'); p.className = 'fine'; p.textContent = 'Ton accès à cette page est en lecture seule : tu vois le classement sans y figurer.'; body.appendChild(p); }
   }
 
+  window.Extras.init(ctx);
   render();
   initBoard();
 })();
