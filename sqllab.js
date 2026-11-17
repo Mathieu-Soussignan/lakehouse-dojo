@@ -177,6 +177,11 @@
     row_number: () => new Col('row_number()'),
     rank: () => new Col('rank()'),
     dense_rank: () => new Col('dense_rank()'),
+    length: x => new Col('length(' + toColSql(x) + ')'),
+    concat: (...xs) => new Col('concat(' + xs.map(toColSql).join(', ') + ')'),
+    year: x => new Col('year(' + toColSql(x) + ')'),
+    month: x => new Col('month(' + toColSql(x) + ')'),
+    dayofmonth: x => new Col('day(' + toColSql(x) + ')'),
     coalesce: (...xs) => new Col('coalesce(' + xs.map(toColSql).join(', ') + ')'),
     when: (cond, val) => (new Col('')).when(cond, val),
     broadcast: df => { if (df) df._broadcast = true; return df; }
@@ -774,20 +779,23 @@
   function mount(root, ctx, missionId) {
     const S = ctx.S; S.lab = S.lab || { done: {}, pyDone: {}, hints: {}, drafts: {}, pyDrafts: {}, follow: {}, lang: 'sql' };
     const LS = S.lab; LS.pyDone = LS.pyDone || {}; LS.pyDrafts = LS.pyDrafts || {};
-    let lang = LS.lang || 'sql';
-    const MS = L.MISSIONS;
-    const cur = MS.find(m => m.id === missionId) || MS.find(m => !LS.done[m.id]) || MS[0];
+    const MS = L.MISSIONS, sparkMs = MS.filter(m => m.group === 'spark'), bankMs = MS.filter(m => m.group !== 'spark');
+    const defaultPool = S.track === 'spark' ? MS : bankMs.concat(sparkMs);
+    const cur = MS.find(m => m.id === missionId) || defaultPool.find(m => !LS.done[m.id]) || defaultPool[0];
+    let lang = cur.group === 'spark' ? 'py' : (LS.lang || 'sql');
     const total = MS.reduce((s, m) => s + m.xp, 0) + MS.reduce((s, m) => s + (m.followup ? m.followup.xp : 0), 0), earned = Object.values(LS.done).reduce((s, v) => s + v, 0);
+    const renderItem = (m, badge) => '<li><a href="#labo-' + m.id + '" class="' + (m.id === cur.id ? 'on' : '') + (LS.done[m.id] != null ? ' done' : '') + '"><span class="mn">' + (LS.done[m.id] != null ? '✓' : badge) + '</span><span>' + esc(m.title) + (LS.pyDone[m.id] ? ' <small class="pill ok" style="padding:0 5px;font-size:.65rem">PySpark ✓</small>' : '') + '</span><small>' + m.xp + ' XP</small></a></li>';
     root.innerHTML =
-      '<div class="head"><p class="crumb"><a href="#accueil">Accueil</a> / Labo SQL & PySpark</p><h1>Labo SQL & PySpark : la Banque Lanterne</h1>' +
-      '<p class="muted">Un vrai moteur DuckDB + un compilateur DataFrame PySpark tournent dans ton navigateur sur la Banque Lanterne. Résous chaque mission en <b>SQL</b>, en <b>PySpark</b> (avec visualisation du <code>Physical Plan</code> Catalyst !) ou dans les deux langages. <span class="pill">' + earned + ' / ' + total + ' XP</span></p></div>' +
+      '<div class="head"><p class="crumb"><a href="#accueil">Accueil</a> / Labo SQL & PySpark</p><h1>Labo SQL & PySpark : de l\'initiation au pipeline complet</h1>' +
+      '<p class="muted">Commence par l\'<b>École PySpark (6 paliers progressifs en partant de zéro)</b> pour apprivoiser Spark geste par geste, ou attaque directement les <b>10 missions de la Banque Lanterne</b> en SQL ou en PySpark. <span class="pill">' + earned + ' / ' + total + ' XP</span></p></div>' +
       '<div class="lab">' +
-        '<aside class="lab-side panel"><h3>Missions</h3><ol class="mlist">' + MS.map((m, i) => '<li><a href="#labo-' + m.id + '" class="' + (m.id === cur.id ? 'on' : '') + (LS.done[m.id] != null ? ' done' : '') + '"><span class="mn">' + (LS.done[m.id] != null ? '✓' : i) + '</span><span>' + esc(m.title) + (LS.pyDone[m.id] ? ' <small class="pill ok" style="padding:0 5px;font-size:.65rem">PySpark ✓</small>' : '') + '</span><small>' + m.xp + ' XP</small></a></li>').join('') + '</ol>' +
+        '<aside class="lab-side panel"><h3>🌱 École PySpark (De zéro)</h3><ol class="mlist">' + sparkMs.map((m, i) => renderItem(m, 'S' + (i + 1))).join('') + '</ol>' +
+        '<h3>🏦 Pipeline Banque Lanterne</h3><ol class="mlist">' + bankMs.map((m, i) => renderItem(m, i)).join('') + '</ol>' +
         '<h3>Tables</h3><div id="schema" class="schema"><p class="fine">Le moteur démarre…</p></div>' +
         '<details class="dialect"><summary>Ce moteur et Databricks</summary><table class="plain"><tr><th>Ici (DuckDB)</th><th>Databricks</th></tr>' + L.DIALECT.map(d => '<tr><td><code>' + esc(d[0]) + '</code></td><td><code>' + esc(d[1]) + '</code><br><span class="fine">' + esc(d[2]) + '</span></td></tr>').join('') + '</table></details>' +
         '<button id="lab-reset" class="small">Réinitialiser le labo</button></aside>' +
         '<div class="lab-main">' +
-          '<section class="panel" id="brief"><div class="hstack between"><span class="eyebrow">Mission ' + MS.indexOf(cur) + '</span><span class="pill">' + cur.xp + ' XP</span></div><h2>' + esc(cur.title) + '</h2><p class="brief">' + cur.brief + '</p>' +
+          '<section class="panel" id="brief"><div class="hstack between"><span class="eyebrow">' + (cur.group === 'spark' ? '🌱 École PySpark · Initiation pas à pas' : '🏦 Banque Lanterne · Mission ' + bankMs.indexOf(cur)) + '</span><span class="pill">' + cur.xp + ' XP</span></div><h2>' + esc(cur.title) + '</h2><p class="brief">' + cur.brief + '</p>' +
           (cur.rules ? '<table class="plain rules">' + cur.rules.map(r => '<tr><td><code>' + r[0] + '</code></td><td>' + r[1] + '</td></tr>').join('') + '</table>' : '') + '<div id="needs"></div></section>' +
           '<section class="panel">' +
           '<div class="hstack between"><div class="seg"><button data-lang="sql" class="' + (lang === 'sql' ? 'on' : '') + '">Mode SQL (DuckDB / Databricks SQL)</button><button data-lang="py" class="' + (lang === 'py' ? 'on' : '') + '">🐍 Mode PySpark (DataFrame API + explain)</button></div>' +

@@ -41,7 +41,7 @@
     ['Z', 'Bilan bouclé', 'Silver, rejets et doublons réconciliés', () => labDone('m3')],
     ['I', 'Idempotent', 'Upsert rejouable sans dégât', () => labDone('m7')],
     ['K', 'Maître Lanterne', 'Lot de 3 jours et alerte SQL validés', () => labDone('m8') && labDone('m9')],
-    ['Y', 'Bilingue Spark', 'Trois missions du Labo validées en PySpark', () => Object.keys((S.lab && S.lab.pyDone) || {}).length >= 3],
+    ['Y', 'Bilingue Spark', 'École PySpark (6 paliers) ou 3 missions validées en PySpark', () => ['s1', 's2', 's3', 's4', 's5', 's6'].every(labDone) || Object.keys((S.lab && S.lab.pyDone) || {}).length >= 3],
     ['X', 'Certifiable', 'Examen blanc réussi à 70 %', () => !!(S.exam && S.exam.best >= 0.7)],
     ['N', 'Ceinture noire', '1 300 XP atteints', () => xp() >= 1300]
   ];
@@ -143,7 +143,7 @@
         const isComp = !r.me && S.comparePeer === r.idx;
         return '<div class="lb-row' + (r.me ? ' me-row' : '') + '" style="grid-template-columns:24px minmax(0,1fr) auto auto">' +
           '<span class="rk">' + (i + 1) + '</span>' +
-          '<span class="nm">' + esc(r.n) + (r.me ? ' <small class="muted">(toi)</small>' : '') + ' <span class="pill">' + esc(trLabel) + '</span> <small class="fine">' + r.s + ' sceaux · ' + r.m + '/10 SQL · ' + r.sm + '/14 sim.</small></span>' +
+          '<span class="nm">' + esc(r.n) + (r.me ? ' <small class="muted">(toi)</small>' : '') + ' <span class="pill">' + esc(trLabel) + '</span> <small class="fine">' + r.s + ' sceaux · ' + r.m + '/16 Labo · ' + r.sm + '/15 sim.</small></span>' +
           (!r.me ? '<button class="small' + (isComp ? ' b-done' : '') + '" data-peer="' + r.idx + '">' + (isComp ? 'Radar affiché' : 'Comparer radar') + '</button>' : '<span></span>') +
           '<span class="pts">' + beltHtml(b) + r.xp + ' XP</span></div>';
       }).join('') + '</div></section>';
@@ -154,11 +154,11 @@
     const next = nextInTrack || D.modules.find(m => proofs(m).includes(false));
     return '<section class="panel hero"><div class="head" style="gap:14px">' +
       '<span class="eyebrow">Keyrus · Databricks Lakehouse Dojo</span><h1>Monte en compétences sur Databricks, à ton rythme</h1>' +
-      '<p class="lead">Onze modules, quatorze simulateurs interactifs, un vrai moteur SQL sur la Banque Lanterne, des playbooks d\'architecture client et des notebooks prêts à importer dans Databricks Free Edition — pensé pour toute l\'équipe, avec ou sans la formation.</p>' +
+      '<p class="lead">Onze modules, quinze simulateurs interactifs, une École PySpark pas-à-pas + le pipeline de la Banque Lanterne dans ton navigateur, des playbooks d\'architecture client et des notebooks prêts pour Databricks Free Edition.</p>' +
       beltHtml(b) +
       '<div class="xp">' + v + ' <small>XP · ceinture ' + BELTS[b][1] + (nx ? ' · encore ' + (nx[0] - v) + ' XP avant la ceinture ' + nx[1] : '') + '</small></div>' +
       '<div class="hstack">' + (next ? '<a class="btn b-primary" href="#module-' + next.id + '">' + (v ? 'Continuer (' + esc(trk.label) + ') : ' : 'Commencer : ') + esc(next.title) + '</a>' : '') +
-      '<a class="btn" href="#labo">Labo SQL (10 missions)</a><a class="btn" href="#memo">Playbooks Keyrus</a></div></div>' + radar() + '</section>' +
+      '<a class="btn" href="#labo-s1">🌱 École PySpark (Débuter)</a><a class="btn" href="#labo-m0">🏦 Labo Banque Lanterne</a></div></div>' + radar() + '</section>' +
 
       trackBar() +
 
@@ -225,7 +225,7 @@
       (pv ? '<a class="btn" href="#module-' + pv.id + '">← ' + esc(pv.title) + '</a>' : '') + (nx ? '<a class="btn" href="#module-' + nx.id + '">' + esc(nx.title) + ' →</a>' : '') + '</div>';
   }
   function atelier() {
-    return '<div class="head"><h1>Simulateurs</h1><p class="muted">Quatorze mécanismes à manipuler directement dans le navigateur. Chacun a une mission : ' + cnt(S.sims) + ' réussies sur ' + SIMS.length + '.</p></div><div class="list">' +
+    return '<div class="head"><h1>Simulateurs</h1><p class="muted">Quinze mécanismes à manipuler directement dans le navigateur. Chacun a une mission : ' + cnt(S.sims) + ' réussies sur ' + SIMS.length + '.</p></div><div class="list">' +
       SIMS.map(s => '<a class="mcard' + (S.sims[s.id] ? ' full' : '') + '" href="#sim-' + s.id + '"><span class="num">' + (S.sims[s.id] ? '✓' : num(mod(s.mod))) + '</span><span><b>' + esc(s.title) + '</b><small>' + esc(s.tag) + '</small></span>' +
         '<span class="pips"><span class="pip">' + esc(mod(s.mod).title) + '</span></span></a>').join('') + '</div>';
   }
@@ -318,8 +318,31 @@
         '<a href="#module-' + m.id + '" style="text-decoration:none;color:inherit"><b>' + esc(m.lab.title) + '</b><small>' + esc(m.title) + ' · ' + m.lab.time + '</small></a>' +
         '<span class="pips"><button class="small" data-nb="' + m.id + '">⬇ .ipynb</button><a class="btn small" href="#module-' + m.id + '">Ouvrir</a></span></div>').join('') + '</div>';
   }
+  const SQL_TO_PY = [
+    ['Lire une table', 'SELECT * FROM clients', 'df = spark.table("clients")', 'Pointe vers la table sans rien charger en mémoire (lazy).'],
+    ['Choisir des colonnes', 'SELECT id, nom FROM t', 'df.select("id", "nom")', 'Un simple texte suffit quand on ne transforme pas la colonne.'],
+    ['Renommer une colonne', 'SELECT nom AS client FROM t', 'df.select(F.col("nom").alias("client"))', '.alias("...") renomme n\'importe quelle expression de colonne.'],
+    ['Filtrer (1 condition)', 'WHERE montant > 0', 'df.filter(F.col("montant") > 0)', 'On accepte aussi la syntaxe SQL : df.filter("montant > 0").'],
+    ['Filtrer (ET / OU)', 'WHERE a > 0 AND b = \'EUR\'', 'df.filter((F.col("a") > 0) & (F.col("b") == "EUR"))', 'Parenthèses obligatoires autour de chaque condition avec & et |.'],
+    ['Tester NULL / NOT NULL', 'WHERE email IS NULL', 'df.filter(F.col("email").isNull())', 'Ou .isNotNull() pour les valeurs présentes.'],
+    ['Créer ou remplacer une colonne', 'SELECT *, upper(trim(nom)) AS nom', 'df.withColumn("nom", F.upper(F.trim("nom")))', 'Remplace "nom" si elle existe, sinon l\'ajoute à la fin.'],
+    ['Condition CASE WHEN', 'CASE WHEN x > 0 THEN \'OK\' ELSE \'KO\' END', 'F.when(F.col("x") > 0, "OK").otherwise("KO")', 'On peut chaîner plusieurs .when(...) avant .otherwise(...).'],
+    ['Supprimer une colonne', 'SELECT * EXCEPT (rejet) FROM t', 'df.drop("rejet")', 'Retire une ou plusieurs colonnes du DataFrame.'],
+    ['Dédoublonner', 'SELECT DISTINCT * FROM t', 'df.dropDuplicates()', 'Ou df.dropDuplicates(["id"]) sur une clé précise.'],
+    ['Grouper et agréger', 'SELECT seg, count(*) AS n, sum(mt) AS tot\nFROM t GROUP BY seg', 'df.groupBy("seg").agg(\n  F.count("*").alias("n"),\n  F.sum("mt").alias("tot"))', 'Déclenche un Shuffle (Exchange) entre les partitions.'],
+    ['Trier', 'ORDER BY tot DESC, seg ASC', 'df.orderBy(F.desc("tot"), F.asc("seg"))', 'Équivalent : .sort(F.desc("tot")).'],
+    ['Joindre deux tables', 't JOIN c USING (compte_id)\n-- ou LEFT JOIN', 't.join(c, "compte_id")\nt.join(c, "compte_id", "left")', 'Passer le nom de clé en chaîne évite de dupliquer la colonne.'],
+    ['Trouver les absents (Anti-join)', 't LEFT ANTI JOIN c USING (compte_id)', 't.join(c, "compte_id", "left_anti")', 'Ne garde que les lignes de t absentes de c (idéal en qualité).'],
+    ['Fenêtre (QUALIFY row_number)', 'QUALIFY row_number() OVER (\n  PARTITION BY id ORDER BY dt DESC) = 1', 'w = Window.partitionBy("id").orderBy(F.desc("dt"))\ndf.withColumn("rn", F.row_number().over(w)).filter("rn = 1")', 'Permet de garder la ligne la plus récente par clé avant un MERGE.'],
+    ['Écrire une table Delta', 'CREATE OR REPLACE TABLE silver_t AS …', 'df.write.mode("overwrite").saveAsTable("silver_t")', 'C\'est une action : elle déclenche tout le plan et écrit dans Delta.']
+  ];
   function memoView() {
-    return '<div class="head"><h1>Mémo, Playbooks & Traducteur</h1><p class="muted">Les scénarios d\'architecture en mission client chez Keyrus, le traducteur depuis tes outils habituels, et le glossaire complet.</p></div>' +
+    return '<div class="head"><h1>Mémo, Dictionnaire PySpark & Playbooks</h1><p class="muted">Le dictionnaire SQL ⇄ PySpark pour partir de zéro, les scénarios d\'architecture en mission client chez Keyrus, le traducteur d\'outils et le glossaire.</p></div>' +
+      '<section class="panel"><div class="hstack between"><div><h2>🐍 Dictionnaire visuel SQL ⇄ PySpark (Partir de zéro)</h2><p class="muted">Tu connais le SQL mais tu débutes en Spark ? Voici la traduction exacte des 16 gestes essentiels.</p></div>' +
+      '<div class="hstack"><a class="btn b-primary" href="#labo-s1">Pratiquer dans l\'École PySpark →</a><a class="btn" href="#sim-pyspark">Simulateur brique par brique</a></div></div>' +
+      '<div class="scroll"><table class="plain"><tr><th>Intention</th><th>En SQL</th><th>En PySpark (DataFrame API)</th><th>Règle à retenir</th></tr>' +
+      SQL_TO_PY.map(r => '<tr><td><b>' + esc(r[0]) + '</b></td><td><code>' + esc(r[1]) + '</code></td><td><code>' + esc(r[2]) + '</code></td><td class="muted">' + esc(r[3]) + '</td></tr>').join('') +
+      '</table></div></section>' +
       '<section class="panel"><h2>Playbooks d\'architecture en mission (Cas clients Keyrus)</h2><p class="muted">Six situations réelles fréquemment rencontrées en projet ou en entretien technique.</p><div class="list">' +
       (D.playbooks || []).map(p => '<details class="playbook"><summary><b>' + esc(p.title) + '</b> <span class="pill">' + esc(p.tag) + '</span></summary>' +
         '<div class="pb-body"><p><b>Contexte client :</b> ' + p.ctx + '</p><p><b>Diagnostic :</b> ' + p.diag + '</p>' +

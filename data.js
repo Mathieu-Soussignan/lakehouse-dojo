@@ -283,42 +283,76 @@ GROUP BY jour;
       ]
     },
     {
-      id: `m5`, day: `J2`, title: `Fondamentaux de Spark`, sub: `Évaluation paresseuse, shuffle, partitions`,
+      id: `m5`, day: `J2`, title: `Fondamentaux de Spark & PySpark`, sub: `Partir de zéro en PySpark, évaluation paresseuse, shuffle et partitions`,
       points: [
-        `<b>Évaluation paresseuse</b> : les <i>transformations</i> (select, filter, join, groupBy) construisent un plan ; rien ne s'exécute avant une <i>action</i> (count, show, write, collect).`,
-        `Transformation <b>étroite</b> (filter, select) : chaque partition se traite seule. Transformation <b>large</b> (join, groupBy, orderBy, distinct) : il faut redistribuer les données, c'est le <b>shuffle</b>, l'opération la plus coûteuse.`,
-        `Découpage : une action = un <b>job</b> ; chaque shuffle ouvre un nouveau <b>stage</b> ; chaque partition d'un stage = une <b>task</b>.`,
-        `<b>Catalyst</b> optimise le plan (repousse les filtres vers la source, n'emporte que les colonnes utiles). <b>AQE</b> ajuste le plan pendant l'exécution : fusion des petites partitions, choix du type de jointure, traitement du skew.`,
-        `<b>Broadcast join</b> : la petite table est envoyée à tous les workers, ce qui évite le shuffle de la grande.`,
-        `Spark SQL et l'API DataFrame produisent le même plan : choisis selon la lisibilité, pas selon la performance.`,
-        `Les <b>UDF Python</b> sortent les données du moteur optimisé : préfère les fonctions natives (<code>pyspark.sql.functions</code>).`,
-        `<code>df.explain()</code> et la <b>Spark UI</b> (ou le Query profile) sont tes outils de diagnostic.`
+        `<b>Partir de zéro : les 3 objets PySpark</b> : <b>1) <code>spark</code></b> est ton point d'entrée pour lire une table (<code>spark.table("clients")</code>). <b>2) <code>df</code></b> est ton DataFrame : une table distribuée et <b>immuable</b> (appeler <code>df.filter(...)</code> ne modifie pas <code>df</code>, cela renvoie un <i>nouveau</i> DataFrame !). <b>3) <code>F</code></b> (<code>from pyspark.sql import functions as F</code>) est la boîte à outils des fonctions SQL (<code>F.col</code>, <code>F.upper</code>, <code>F.sum</code>, <code>F.when</code>).`,
+        `<b>La règle d'or <code>"nom"</code> contre <code>F.col("nom")</code></b> : Quand tu ne fais que <i>désigner</i> une colonne existante (<code>.select("nom", "ville")</code>, <code>.groupBy("segment")</code>, <code>.join(autre, "client_id")</code>), un simple texte suffit. Dès que tu <i>calcules, compares ou appelles une fonction</i> (<code>F.col("montant") &gt; 0</code>, <code>F.upper(F.trim("nom"))</code>), utilise <code>F</code>.`,
+        `<b>Traduction mentale depuis le SQL</b> : <code>FROM t</code> → <code>spark.table("t")</code> · <code>WHERE</code> → <code>.filter(...)</code> · <code>SELECT</code> → <code>.select(...)</code> · <code> Ajouter/modifier une colonne</code> → <code>.withColumn("col", ...)</code> · <code>CASE WHEN</code> → <code>F.when(cond, val).otherwise(val2)</code> · <code>SELECT DISTINCT</code> → <code>.dropDuplicates()</code>.`,
+        `<b>Évaluation paresseuse (Lazy Evaluation)</b> : les <i>transformations</i> (<code>select</code>, <code>filter</code>, <code>withColumn</code>, <code>join</code>, <code>groupBy</code>) construisent un plan sans toucher aux données ; rien ne s'exécute avant une <i>action</i> (<code>display(df)</code>, <code>count()</code>, <code>show()</code>, <code>write.saveAsTable()</code>).`,
+        `Transformation <b>étroite (narrow)</b> (<code>filter</code>, <code>select</code>, <code>withColumn</code>) : chaque partition se traite seule en mémoire sur son worker. Transformation <b>large (wide)</b> (<code>join</code>, <code>groupBy</code>, <code>orderBy</code>, <code>dropDuplicates</code>) : il faut redistribuer les lignes par clé sur le réseau — c'est le <b>shuffle</b>, l'opération la plus coûteuse.`,
+        `Découpage physique : 1 action = 1 <b>job</b> ; chaque shuffle coupe le job en <b>stages</b> (séparés par <code>Exchange</code> dans le plan) ; chaque partition d'un stage = 1 <b>task</b> exécutée sur un cœur CPU.`,
+        `<b>Catalyst & AQE</b> : Catalyst réordonne et optimise ton code (repousse les filtres à la source, ne lit que les colonnes utiles) — SQL et PySpark produisent <b>exactement le même plan physique</b>. <b>AQE</b> réajuste le plan en plein vol (fusionne les petites partitions, convertit un join en <b>Broadcast Join</b> si une table est petite, découpe les partitions victimes de <i>skew</i>).`,
+        `<b>Fonctions natives vs UDF Python</b> : N'utilise jamais de boucle <code>for</code> ni d'UDF Python classique quand une fonction de <code>pyspark.sql.functions</code> existe : les fonctions natives restent dans le moteur C++ (Photon) alors qu'une UDF Python sérialise les lignes une par une.`
       ],
       code: [
-        { t: `Agrégation et jointure`, c: `from pyspark.sql import functions as F
+        { t: `Palier 1 · Lire, filtrer et choisir ses colonnes (SELECT … WHERE)`, c: `from pyspark.sql import functions as F
 
-courses = spark.read.table("workspace.dojo.courses_silver")
+# 1. Lire la table (équivalent de FROM samples.nyctaxi.trips)
+df = spark.read.table("samples.nyctaxi.trips")
 
-par_zone = (courses
-  .groupBy("pickup_zip")
-  .agg(F.count("*").alias("courses"),
-       F.round(F.avg("fare_amount"), 2).alias("prix_moyen")))
+# 2. Filtrer et choisir des colonnes (rien ne s'exécute encore !)
+courses_propres = (df
+  .filter((F.col("trip_distance") > 0) & (F.col("fare_amount") > 2.5))
+  .select("tpep_pickup_datetime", "pickup_zip", "trip_distance", "fare_amount"))
 
-# Rien n'a encore été exécuté : on regarde le plan
+# 3. Déclencher l'action pour voir le résultat
+display(courses_propres.limit(10))` },
+        { t: `Palier 2 · Créer ou nettoyer une colonne (.withColumn et F.when)`, c: `from pyspark.sql import functions as F
+
+enrichi = (courses_propres
+  # Créer une nouvelle colonne "jour" à partir du timestamp
+  .withColumn("jour", F.to_date("tpep_pickup_datetime"))
+  # Équivalent du CASE WHEN … THEN … ELSE … END en SQL
+  .withColumn("categorie_trajet",
+      F.when(F.col("trip_distance") >= 10, "LONG")
+       .when(F.col("trip_distance") >= 3, "MOYEN")
+       .otherwise("COURT")))
+
+display(enrichi.limit(10))` },
+        { t: `Palier 3 · Grouper, agréger et trier (.groupBy, .agg, .orderBy)`, c: `from pyspark.sql import functions as F
+
+par_zone = (enrichi
+  .groupBy("pickup_zip", "categorie_trajet")
+  .agg(
+      F.count("*").alias("nb_courses"),
+      F.round(F.avg("fare_amount"), 2).alias("prix_moyen"),
+      F.round(F.sum("fare_amount"), 2).alias("ca_total")
+  )
+  .orderBy(F.desc("nb_courses")))
+
+# Regarder le plan physique Catalyst (repère "Exchange" = le shuffle !)
 par_zone.explain()
+display(par_zone.limit(10))` },
+        { t: `Palier 4 · Joindre deux tables (.join, broadcast et anti-join)`, c: `from pyspark.sql import functions as F
 
-# L'action déclenche le calcul
-display(par_zone.orderBy(F.desc("courses")).limit(10))` },
-        { t: `Forcer un broadcast`, c: `zones = spark.createDataFrame(
-  [(10001, "Chelsea"), (10002, "Lower East Side")], ["zip", "quartier"])
+zones = spark.createDataFrame(
+  [(10001, "Chelsea"), (10002, "Lower East Side")], ["pickup_zip", "quartier"])
 
-enrichi = courses.join(F.broadcast(zones),
-                       courses.pickup_zip == zones.zip, "left")` }
+# Jointure gauche en diffusant la petite table (zéro shuffle sur la grande !)
+avec_quartier = par_zone.join(F.broadcast(zones), "pickup_zip", "left")
+
+# Anti-join : trouver les codes postaux absents du référentiel "zones"
+inconnus = par_zone.join(zones, "pickup_zip", "left_anti")
+
+# Sauvegarder le résultat en table Delta
+avec_quartier.write.mode("overwrite").saveAsTable("workspace.dojo.stats_zones")` }
       ],
       traps: [
-        `Chercher une erreur à la ligne de la transformation : elle n'apparaît qu'à l'action, parfois bien plus bas.`,
-        `Appeler plusieurs actions sur le même DataFrame sans s'apercevoir que tout le plan est recalculé à chaque fois.`,
-        `Boucler en Python sur les lignes (<code>for row in df.collect()</code>) au lieu d'exprimer le traitement en colonnes.`
+        `Oublier qu'un DataFrame est immuable : écrire <code>df.filter("montant > 0")</code> tout seul sur une ligne ne modifie pas <code>df</code> ! Il faut écrire <code>df = df.filter("montant > 0")</code>.`,
+        `Utiliser <code>and</code> / <code>or</code> en Python entre deux conditions de colonnes : en PySpark on utilise <code>&amp;</code> (ET), <code>|</code> (OU) et <code>~</code> (NON) en mettant chaque condition entre parenthèses : <code>(F.col("a") == 1) &amp; (F.col("b") == 2)</code>.`,
+        `Chercher une erreur à la ligne de la transformation : comme l'évaluation est paresseuse, l'erreur n'éclate qu'au moment de l'action (<code>display</code>, <code>count</code>, <code>write</code>), parfois 30 lignes plus bas.`,
+        `Appeler plusieurs actions (ex. un <code>df.count()</code> pour vérifier, puis <code>df.write.saveAsTable()</code>) sans savoir que Spark va exécuter deux fois tout le calcul depuis la source.`,
+        `Boucler en Python sur les lignes (<code>for row in df.collect():</code>) au lieu d'utiliser les opérations vectorisées sur les colonnes.`
       ],
       ask: [
         `Comment lisez-vous une Spark UI pour trouver le stage qui coûte cher ?`,
@@ -354,18 +388,24 @@ spark.sql("""
 """).explain()`
       },
       quiz: [
-        { q: `Laquelle de ces opérations est une action ?`, o: [`filter`, `withColumn`, `count`, `join`], a: 2, e: `count déclenche l'exécution. Les trois autres ne font qu'enrichir le plan.` },
-        { q: `Quelle opération provoque un shuffle ?`, o: [`select`, `filter`, `groupBy`, `withColumn`], a: 2, e: `groupBy est une transformation large : les lignes d'une même clé doivent être regroupées.` },
+        { q: `Laquelle de ces opérations est une action qui déclenche réellement le calcul Spark ?`, o: [`filter`, `withColumn`, `count`, `join`], a: 2, e: `count déclenche l'exécution d'un job Spark. Les trois autres sont des transformations paresseuses qui ne font qu'enrichir le plan.` },
+        { q: `Quelle opération provoque un shuffle (redistribution réseau entre workers) ?`, o: [`select`, `filter`, `groupBy`, `withColumn`], a: 2, e: `groupBy est une transformation large : toutes les lignes d'une même clé doivent se rejoindre sur la même partition.` },
+        { q: `Vous écrivez df.filter("montant > 0") sans réaffecter le résultat, puis display(df). Que voyez-vous ?`, o: [`Uniquement les montants positifs`, `Toutes les lignes d'origine : un DataFrame Spark est immuable, il fallait écrire df = df.filter(...)`, `Une erreur de syntaxe`, `Un DataFrame vide`], a: 1, e: `Chaque transformation renvoie un nouveau DataFrame sans jamais modifier l'objet d'origine.` },
+        { q: `Comment combiner deux conditions dans un .filter() avec des objets colonnes F.col() ?`, o: [`F.col("a") == 1 and F.col("b") == 2`, `(F.col("a") == 1) & (F.col("b") == 2)`, `F.col("a") = 1 && F.col("b") = 2`, `F.and(F.col("a") == 1, F.col("b") == 2)`], a: 1, e: `En PySpark, on utilise les opérateurs & (ET), | (OU) et ~ (NON) en entourant chaque comparaison de parenthèses.` },
         { q: `Que fait un broadcast join ?`, o: [`Il trie les deux tables avant de les joindre`, `Il copie la petite table sur chaque worker pour éviter de redistribuer la grande`, `Il écrit le résultat sur le driver`, `Il désactive AQE`], a: 1, e: `Sans shuffle de la grande table, la jointure est beaucoup plus rapide.` },
-        { q: `Qu'est-ce qui délimite deux stages ?`, o: [`Une cellule de notebook`, `Un shuffle`, `Une action`, `Un changement de langage`], a: 1, e: `Chaque redistribution des données ouvre un nouveau stage.` },
-        { q: `Pourquoi éviter les UDF Python quand une fonction native existe ?`, o: [`Elles sont interdites avec Unity Catalog`, `Elles échappent aux optimisations du moteur et coûtent en sérialisation`, `Elles ne fonctionnent pas en SQL`, `Elles ne gèrent pas les valeurs nulles`], a: 1, e: `Les fonctions natives sont optimisées par Catalyst et exécutées par Photon.` }
+        { q: `Qu'est-ce qui délimite deux stages dans un job Spark ?`, o: [`Une cellule de notebook`, `Un shuffle (Exchange)`, `Une action`, `Un changement de langage SQL / Python`], a: 1, e: `Chaque redistribution des données (shuffle) ouvre un nouveau stage.` },
+        { q: `Pourquoi éviter les UDF Python quand une fonction native de pyspark.sql.functions existe ?`, o: [`Elles sont interdites avec Unity Catalog`, `Elles échappent aux optimisations Catalyst/Photon et coûtent cher en sérialisation Python`, `Elles ne fonctionnent pas sur Azure`, `Elles ne gèrent pas les chaînes de caractères`], a: 1, e: `Les fonctions natives (F.upper, F.when, etc.) sont compilées par Catalyst et exécutées en C++ par Photon.` }
       ],
       cards: [
-        [`Transformation vs action`, `Transformation : construit le plan (filter, join...). Action : l'exécute (count, show, write, collect).`],
-        [`Qu'est-ce que le shuffle ?`, `La redistribution des données entre partitions, imposée par join, groupBy, orderBy, distinct. C'est l'opération la plus coûteuse.`],
-        [`Job, stage, task`, `Job = une action. Stage = un bloc sans shuffle. Task = un stage appliqué à une partition.`],
-        [`AQE : trois apports`, `Fusion des petites partitions de shuffle, changement de stratégie de jointure, traitement du skew.`],
-        [`Catalyst : deux optimisations à citer`, `Predicate pushdown (filtrer à la source) et column pruning (ne lire que les colonnes utiles).`],
+        [`Transformation vs action`, `Transformation : construit le plan sans rien calculer (select, filter, withColumn, join, groupBy). Action : déclenche le calcul (display, count, show, write).`],
+        [`Immuabilité d'un DataFrame`, `df.filter(...) ne modifie pas df : il renvoie un nouveau DataFrame. Il faut toujours réaffecter (df2 = df.filter(...)) ou chaîner.`],
+        [`Quand écrire "col" vs F.col("col") ?`, `"col" suffit pour nommer une colonne (.select("nom"), .groupBy("ville")). F.col("col") est requis dès qu'on compare ou calcule (F.col("prix") > 10).`],
+        [`Équivalent PySpark de CASE WHEN … ELSE …`, `F.when(condition, valeur).when(cond2, val2).otherwise(valeur_defaut)`],
+        [`Combiner 2 conditions dans .filter()`, `(F.col("a") > 0) & (F.col("b") == "EUR") — utiliser & (ET), | (OU), ~ (NON) avec des parenthèses, jamais "and"/"or".`],
+        [`Qu'est-ce que le shuffle ?`, `La redistribution des données sur le réseau entre partitions, imposée par join, groupBy, orderBy, dropDuplicates. Marquée par Exchange dans explain().`],
+        [`Job, stage, task`, `Job = 1 action. Stage = 1 bloc de calcul sans shuffle. Task = 1 stage exécuté sur 1 partition.`],
+        [`AQE : trois apports`, `Fusion des petites partitions de shuffle, conversion automatique en Broadcast Join, découpage des partitions en cas de skew.`],
+        [`Catalyst : deux optimisations à citer`, `Predicate pushdown (pousser les filtres au plus tôt vers les fichiers) et column pruning (ne lire que les colonnes utilisées).`],
         [`Comment voir le plan d'exécution ?`, `df.explain() en PySpark, EXPLAIN en SQL, puis la Spark UI ou le Query profile.`]
       ]
     },
@@ -882,6 +922,19 @@ databricks bundle run <nom_du_job> -t dev`
         `<b>00:45 – 01:10 · Le cœur de Delta Lake</b> : Étudie le module <a href="#module-m6">6 (Delta Lake)</a>, manipule le journal dans le simulateur <a href="#sim-delta">Time Travel & VACUUM</a>.`,
         `<b>01:10 – 01:45 · Mains dans le cambouis SQL</b> : Ouvre le <a href="#labo">Labo SQL (Banque Lanterne)</a> et réalise au moins les missions 1, 3, 4 et 7 (registre des défauts, Silver/rejets, Gold et Upsert idempotent).`,
         `<b>01:45 – 02:00 · Orchestration & Ingestion</b> : Passe les simulateurs <a href="#sim-job">Repair run</a>, <a href="#sim-dlt">Expectations Lakeflow</a> et <a href="#sim-autoloader">Auto Loader</a>.`
+      ]
+    },
+    spark: {
+      label: `Initiation Spark & PySpark (Zéro → Autonome)`,
+      time: `~3 h · Progression pas à pas`,
+      desc: `Tu ne connais pas encore Spark ni PySpark ? Ce parcours progressif part de zéro (ou de ton bagage SQL) pour t'apprendre à penser en distribué et à écrire du PySpark propre sur Databricks, palier par palier.`,
+      mods: [`m4`, `m5`, `m6`, `m10`],
+      steps: [
+        `<b>Étape 1 · Comprendre la mécanique sans code (20 min)</b> : Lis le module <a href="#module-m5">5 (Fondamentaux de Spark & PySpark)</a> et manipule le simulateur <a href="#sim-spark">Paresse et shuffle</a> pour voir pourquoi rien ne bouge avant une action.`,
+        `<b>Étape 2 · Apprivoiser la grammaire PySpark (20 min)</b> : Fais les 4 paliers du nouveau simulateur <a href="#sim-pyspark">De SQL à PySpark : brique par brique</a> et garde sous la main le <a href="#memo">Dictionnaire SQL ⇄ PySpark</a>.`,
+        `<b>Étape 3 · Tes 6 premiers scripts dans l'École PySpark (45 min)</b> : Ouvre le <a href="#labo-s1">Labo en mode École PySpark (Paliers S1 à S6)</a> : 1) <code>.select()</code>, 2) <code>.filter()</code>, 3) <code>.withColumn()</code>, 4) <code>F.when()</code>, 5) <code>.groupBy().agg()</code>, 6) <code>.join()</code>.`,
+        `<b>Étape 4 · Construire un vrai pipeline en PySpark (45 min)</b> : Passe aux missions <a href="#labo-m2">M2 (Clients propres)</a>, <a href="#labo-m3">M3 (Silver & rejets)</a> et <a href="#labo-m4">M4 (Gold)</a> en <b>Mode PySpark</b> et inspecte le <code>Physical Plan</code> généré.`,
+        `<b>Étape 5 · Diagnostiquer comme un pro (20 min)</b> : Résous les 4 pannes classiques (Skew, Spill, Petits fichiers, Shuffle) dans le simulateur <a href="#sim-sparkui">Diagnostic Spark UI</a> du module <a href="#module-m10">10</a>.`
       ]
     },
     bi: {

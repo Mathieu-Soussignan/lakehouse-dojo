@@ -668,5 +668,117 @@
     }
   });
 
+  /* ---------- 15. De SQL à PySpark : construire son DataFrame brique par brique ---------- */
+  SIMS.push({
+    id: 'pyspark', mod: 'm5', title: 'De SQL à PySpark : brique par brique',
+    tag: 'Pour qui débute en Spark : parcours les 4 paliers et observe comment chaque méthode PySpark transforme la table et traduit le SQL.',
+    mission: 'Valide les 4 paliers (Sélection/Filtre, Colonnes calculées, Agrégation, Jointures).',
+    mount(root, win) {
+      const RAW = [
+        { id: 'C1', nom: ' moreau ', seg: 'PRO', ville: 'Lyon', solde: 8200 },
+        { id: 'C2', nom: 'Lambert', seg: 'PART', ville: 'Paris', solde: 1400 },
+        { id: 'C3', nom: ' roux', seg: 'PRO', ville: 'Rennes', solde: 5600 },
+        { id: 'C4', nom: 'Vidal', seg: 'PART', ville: 'Nice', solde: 950 }
+      ];
+      const CPT = [
+        { id: 'C1', cpt: 'CPT01' },
+        { id: 'C2', cpt: 'CPT02' },
+        { id: 'C3', cpt: 'CPT03' }
+      ];
+      const STAGES = [
+        {
+          id: 'p1', label: '1. Lire, filtrer, choisir',
+          sql: "SELECT id, nom, ville\nFROM clients\nWHERE seg = 'PRO';",
+          steps: [
+            ['spark.table("clients")', 'FROM clients — lit les 4 lignes et 5 colonnes (plan paresseux).', ['id', 'nom', 'seg', 'ville', 'solde'], RAW.map(r => [r.id, r.nom, r.seg, r.ville, r.solde])],
+            ['.filter(F.col("seg") == "PRO")', 'WHERE seg = \'PRO\' — transformation étroite : garde 2 lignes sur place.', ['id', 'nom', 'seg', 'ville', 'solde'], RAW.filter(r => r.seg === 'PRO').map(r => [r.id, r.nom, r.seg, r.ville, r.solde])],
+            ['.select("id", "nom", "ville")', 'SELECT id, nom, ville — ne conserve que les 3 colonnes demandées.', ['id', 'nom', 'ville'], RAW.filter(r => r.seg === 'PRO').map(r => [r.id, r.nom, r.ville])]
+          ]
+        },
+        {
+          id: 'p2', label: '2. Nettoyer & calculer (.withColumn)',
+          sql: "SELECT id, upper(trim(nom)) AS nom,\n  CASE WHEN solde >= 5000 THEN 'HAUTE' ELSE 'NORMALE' END AS priorite\nFROM clients;",
+          steps: [
+            ['spark.table("clients").select("id", "nom", "solde")', 'Table de départ : remarque les espaces et minuscules dans "nom".', ['id', 'nom', 'solde'], RAW.map(r => [r.id, r.nom, r.solde])],
+            ['.withColumn("nom", F.upper(F.trim("nom")))', 'Comme "nom" existe déjà, .withColumn() remplace la colonne sur place !', ['id', 'nom', 'solde'], RAW.map(r => [r.id, r.nom.trim().toUpperCase(), r.solde])],
+            ['.withColumn("priorite", F.when(F.col("solde") >= 5000, "HAUTE").otherwise("NORMALE"))', 'F.when().otherwise() est le CASE WHEN de PySpark : ajoute une nouvelle colonne.', ['id', 'nom', 'solde', 'priorite'], RAW.map(r => [r.id, r.nom.trim().toUpperCase(), r.solde, r.solde >= 5000 ? 'HAUTE' : 'NORMALE'])]
+          ]
+        },
+        {
+          id: 'p3', label: '3. Grouper & agréger (.groupBy)',
+          sql: "SELECT seg, count(*) AS nb, avg(solde) AS moy\nFROM clients\nGROUP BY seg\nORDER BY moy DESC;",
+          steps: [
+            ['spark.table("clients").groupBy("seg")', 'Attention : .groupBy("seg") renvoie un objet GroupedData, pas encore un DataFrame ! Il attend .agg(...).', ['État intermédiaire'], [['GroupedData(keys=[seg]) — en attente d\'une fonction d\'agrégation (.agg)']]],
+            ['.agg(F.count("*").alias("nb"), F.avg("solde").alias("moy"))', 'Déclenche un Shuffle (Exchange) : regroupe par seg et calcule nb et moy.', ['seg', 'nb', 'moy'], [['PART', 2, 1175], ['PRO', 2, 6900]]],
+            ['.orderBy(F.desc("moy"))', 'ORDER BY moy DESC : trie du plus grand au plus petit.', ['seg', 'nb', 'moy'], [['PRO', 2, 6900], ['PART', 2, 1175]]]
+          ]
+        },
+        {
+          id: 'p4', label: '4. Joindre (.join : inner, left, left_anti)',
+          sql: "-- Le client C4 (Vidal) n'a aucun compte dans la table comptes.\n-- Compare l'effet des 3 types de jointure :",
+          steps: [
+            ['clients.join(comptes, "id", "inner")', 'INNER JOIN (défaut) : C4 disparaît en silence car il n\'a pas de compte !', ['id', 'nom', 'cpt'], [['C1', 'moreau', 'CPT01'], ['C2', 'Lambert', 'CPT02'], ['C3', 'roux', 'CPT03']]],
+            ['clients.join(comptes, "id", "left")', 'LEFT JOIN : garde tous les clients ; C4 apparaît avec cpt = NULL.', ['id', 'nom', 'cpt'], [['C1', 'moreau', 'CPT01'], ['C2', 'Lambert', 'CPT02'], ['C3', 'roux', 'CPT03'], ['C4', 'Vidal', 'NULL']]],
+            ['clients.join(comptes, "id", "left_anti")', 'LEFT ANTI JOIN : le détecteur d\'anomalies ! Ne renvoie QUE les lignes de gauche absentes à droite (C4).', ['id', 'nom', 'ville'], [['C4', 'Vidal', 'Nice']]]
+          ]
+        }
+      ];
+      const st = { p: 0, step: 0, done: {} };
+      const draw = () => {
+        const cur = STAGES[st.p], s = cur.steps[st.step];
+        const codePy = 'from pyspark.sql import functions as F\n\ndf = (\n  ' + cur.steps.slice(0, st.step + 1).map(x => x[0]).join('\n  ') + '\n)\ndisplay(df)';
+        root.innerHTML = `
+          <div class="seg">${STAGES.map((x, i) => `<button data-p="${i}" class="${i === st.p ? 'on' : ''}">${st.done[x.id] ? '✓ ' : ''}${esc(x.label)}</button>`).join('')}</div>
+          <div class="sim-cols">
+            <div>
+              <span class="zlabel">Équivalent SQL familier</span>
+              <pre class="mini">${esc(cur.sql)}</pre>
+              <span class="zlabel" style="margin-top:10px">Chaîne PySpark (clique sur chaque étape)</span>
+              <div class="list">${cur.steps.map((x, i) => `<button class="opt ${i === st.step ? 'picked' : i < st.step ? 'right' : ''}" data-s="${i}"><b>Étape ${i + 1} :</b> <code>${esc(x[0])}</code></button>`).join('')}</div>
+            </div>
+            <div>
+              <span class="zlabel">Code PySpark assemblé</span>
+              <pre class="mini">${esc(codePy)}</pre>
+              <span class="zlabel" style="margin-top:10px">Aperçu du DataFrame à l'étape ${st.step + 1}</span>
+              <table class="t"><tr>${s[2].map(c => `<th>${esc(c)}</th>`).join('')}</tr>${s[3].map(r => `<tr>${r.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</table>
+              <div class="sim-note" style="margin-top:10px"><b>Ce qui se passe :</b> ${esc(s[1])}</div>
+            </div>
+          </div>
+          <div class="sim-actions">
+            <button class="b-primary" data-next="1">${st.step < cur.steps.length - 1 ? 'Étape PySpark suivante →' : st.p < STAGES.length - 1 ? '✓ Valider ce palier et passer au suivant →' : '✓ Valider le 4e palier'}</button>
+            <span class="muted">Paliers validés : <b>${Object.keys(st.done).length} / 4</b></span>
+          </div>`;
+      };
+      root.onclick = e => {
+        const b = e.target.closest('button'); if (!b) return;
+        if (b.dataset.p != null) { st.p = +b.dataset.p; st.step = 0; draw(); return; }
+        if (b.dataset.s != null) {
+          st.step = +b.dataset.s;
+          if (st.step === STAGES[st.p].steps.length - 1) {
+            st.done[STAGES[st.p].id] = true;
+            if (Object.keys(st.done).length === STAGES.length) win();
+          }
+          draw(); return;
+        }
+        if (b.dataset.next) {
+          const cur = STAGES[st.p];
+          if (st.step < cur.steps.length - 1) {
+            st.step++;
+            if (st.step === cur.steps.length - 1) {
+              st.done[cur.id] = true;
+              if (Object.keys(st.done).length === STAGES.length) win();
+            }
+          } else {
+            st.done[cur.id] = true;
+            if (Object.keys(st.done).length === STAGES.length) win();
+            if (st.p < STAGES.length - 1) { st.p++; st.step = 0; }
+          }
+          draw();
+        }
+      };
+      draw();
+    }
+  });
+
   window.SIMS = SIMS;
 })();

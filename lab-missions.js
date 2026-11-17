@@ -60,6 +60,90 @@ INSERT INTO ref.silver_j3 SELECT a.* FROM ref.lot_3j a WHERE NOT EXISTS (SELECT 
 
   MISSIONS: [
     {
+      id: 's1', group: 'spark', xp: 15, title: 'Palier 1 · Lire et choisir ses colonnes (.select)',
+      brief: '<strong>Bienvenue dans l\'École PySpark !</strong> Si tu n\'as jamais écrit de Spark, on part de zéro, geste par geste.<br>En PySpark, <code>spark.table("bronze_agences")</code> pointe vers la table (comme <code>FROM</code> en SQL) et <code>.select("col1", "col2")</code> choisit les colonnes. Tant que tu n\'appelles pas une <em>action</em> comme <code>display(df)</code>, Spark ne calcule rien (évaluation paresseuse).<br><strong>Ta mission :</strong> Affiche uniquement les colonnes <code>agence_id</code> et <code>nom</code> de la table <code>bronze_agences</code>.',
+      starter: 'SELECT agence_id, nom FROM bronze_agences;\n',
+      pyStarter: '# 1. Pointer vers la table bronze_agences (aucun calcul n\'est lancé ici)\ndf = spark.table("bronze_agences")\n\n# 2. Choisir uniquement les colonnes "agence_id" et "nom"\nresultat = df.select("agence_id", "nom")\n\n# 3. Déclencher l\'action pour afficher le résultat\ndisplay(resultat)\n',
+      hints: [
+        'Passe les noms de colonnes entre guillemets dans <code>.select("agence_id", "nom")</code>.',
+        'Tu peux aussi tout chaîner : <code>display(spark.table("bronze_agences").select("agence_id", "nom"))</code>.',
+        'SELECT agence_id, nom FROM bronze_agences;'
+      ],
+      expect: { sql: 'SELECT agence_id, nom FROM bronze_agences' },
+      after: 'Premier geste acquis ! Regarde sous le tableau de résultat : le bloc « Plan d\'exécution Spark » te montre l\'opérateur <code>Project [agence_id, nom]</code> posé au-dessus de <code>FileScan parquet</code>.',
+      py: 'df = spark.table("bronze_agences")\nresultat = df.select("agence_id", "nom")\ndisplay(resultat)'
+    },
+    {
+      id: 's2', group: 'spark', xp: 15, title: 'Palier 2 · Filtrer des lignes (.filter et F.col)',
+      brief: 'Pour filtrer des lignes (le <code>WHERE</code> du SQL), on appelle <code>.filter(...)</code> sur le DataFrame.<br>En PySpark, dès qu\'on compare une colonne à une valeur, on importe la boîte à outils <code>from pyspark.sql import functions as F</code> et on écrit <code>F.col("region") == "Bretagne"</code> (attention au double égal <code>==</code> de Python !).<br><strong>Ta mission :</strong> Filtre <code>bronze_agences</code> pour ne garder que les 3 agences où <code>region</code> vaut <code>\'Bretagne\'</code>.',
+      starter: 'SELECT * FROM bronze_agences WHERE region = \'Bretagne\';\n',
+      pyStarter: 'from pyspark.sql import functions as F\n\ndf = spark.table("bronze_agences")\n\n# Filtre pour ne garder que la région "Bretagne"\nbretagne = df.filter(F.col("region") == "Bretagne")\n\ndisplay(bretagne)\n',
+      hints: [
+        'En PySpark, <code>df.filter(F.col("region") == "Bretagne")</code> et <code>df.filter("region = \'Bretagne\'")</code> sont tous les deux acceptés et produisent exactement le même plan !',
+        'N\'oublie pas de réaffecter le résultat (<code>bretagne = df.filter(...)</code>) car un DataFrame Spark est immuable.',
+        'SELECT * FROM bronze_agences WHERE region = \'Bretagne\';'
+      ],
+      expect: { sql: 'SELECT * FROM bronze_agences WHERE region = \'Bretagne\'' },
+      after: 'Tu sais filtrer ! Retiens bien cette règle : pour simplement nommer une colonne (dans <code>.select("nom")</code>), une chaîne suffit ; pour la comparer (<code>==</code>, <code>&gt;</code>, <code>!=</code>), utilise <code>F.col("...")</code>.',
+      py: 'from pyspark.sql import functions as F\n\nbretagne = spark.table("bronze_agences").filter(F.col("region") == "Bretagne")\ndisplay(bretagne)'
+    },
+    {
+      id: 's3', group: 'spark', xp: 20, title: 'Palier 3 · Créer ou transformer une colonne (.withColumn)',
+      brief: 'La méthode <code>.withColumn("nom_col", expression)</code> est le couteau suisse de PySpark :<br>• Si <code>"nom_col"</code> n\'existe pas encore, elle <strong>ajoute</strong> une nouvelle colonne.<br>• Si <code>"nom_col"</code> existe déjà, elle <strong>remplace</strong> la colonne sur place !<br><strong>Ta mission :</strong> À partir de <code>bronze_agences</code>, sélectionne <code>agence_id</code> et <code>nom</code>, puis ajoute une 3e colonne <code>nom_maj</code> contenant le nom en majuscules grâce à <code>F.upper(F.col("nom"))</code>.',
+      starter: 'SELECT agence_id, nom, upper(nom) AS nom_maj FROM bronze_agences;\n',
+      pyStarter: 'from pyspark.sql import functions as F\n\ndf = (spark.table("bronze_agences")\n  .select("agence_id", "nom")\n  # Ajoute la colonne "nom_maj" en majuscules avec .withColumn(...)\n  .withColumn("nom_maj", F.upper(F.col("nom")))\n)\n\ndisplay(df)\n',
+      hints: [
+        'En mettant des parenthèses autour de toute l\'expression <code>df = (spark.table(...) ... )</code>, tu peux chaîner une méthode par ligne très proprement sans antislash.',
+        'Utilise <code>.withColumn("nom_maj", F.upper(F.col("nom")))</code>.',
+        'SELECT agence_id, nom, upper(nom) AS nom_maj FROM bronze_agences;'
+      ],
+      expect: { sql: 'SELECT agence_id, nom, upper(nom) AS nom_maj FROM bronze_agences' },
+      after: 'Tu maîtrises <code>.withColumn()</code> ! C\'est avec elle qu\'on nettoie les textes (<code>F.upper(F.trim("nom"))</code>) et qu\'on extrait les dates (<code>F.to_date(...)</code>).',
+      py: 'from pyspark.sql import functions as F\n\ndf = (spark.table("bronze_agences")\n  .select("agence_id", "nom")\n  .withColumn("nom_maj", F.upper(F.col("nom"))))\ndisplay(df)'
+    },
+    {
+      id: 's4', group: 'spark', xp: 25, title: 'Palier 4 · Conditionner avec F.when().otherwise()',
+      brief: 'Comment traduire le <code>CASE WHEN … THEN … ELSE … END</code> du SQL en PySpark ?<br>Jamais avec une boucle Python ! On utilise <code>F.when(condition, valeur).otherwise(valeur_sinon)</code>, qui s\'exécute en parallèle sur toutes les partitions.<br><strong>Ta mission :</strong> À partir de <code>bronze_comptes</code>, sélectionne <code>compte_id</code> et <code>devise_ref</code>, puis ajoute une colonne <code>zone</code> qui vaut <code>\'ZONE_EURO\'</code> si <code>devise_ref == \'EUR\'</code>, et <code>\'DEVISE_ETRANGERE\'</code> sinon.',
+      starter: 'SELECT compte_id, devise_ref,\n  CASE WHEN devise_ref = \'EUR\' THEN \'ZONE_EURO\' ELSE \'DEVISE_ETRANGERE\' END AS zone\nFROM bronze_comptes;\n',
+      pyStarter: 'from pyspark.sql import functions as F\n\ndf = (spark.table("bronze_comptes")\n  .select("compte_id", "devise_ref")\n  .withColumn("zone",\n      F.when(F.col("devise_ref") == "EUR", "ZONE_EURO")\n       .otherwise("DEVISE_ETRANGERE"))\n)\n\ndisplay(df)\n',
+      hints: [
+        'On peut enchaîner plusieurs <code>.when(cond1, val1).when(cond2, val2).otherwise(defaut)</code> à la suite !',
+        'Vérifie l\'orthographe exacte : <code>\'ZONE_EURO\'</code> et <code>\'DEVISE_ETRANGERE\'</code>.',
+        'SELECT compte_id, devise_ref, CASE WHEN devise_ref = \'EUR\' THEN \'ZONE_EURO\' ELSE \'DEVISE_ETRANGERE\' END AS zone FROM bronze_comptes;'
+      ],
+      expect: { sql: 'SELECT compte_id, devise_ref, CASE WHEN devise_ref = \'EUR\' THEN \'ZONE_EURO\' ELSE \'DEVISE_ETRANGERE\' END AS zone FROM bronze_comptes' },
+      after: 'Exactement comme un <code>CASE WHEN</code> ! Dans la mission Silver (M3), tu enchaîneras quatre <code>.when()</code> successifs pour qualifier les 4 motifs de rejet.',
+      py: 'from pyspark.sql import functions as F\n\ndf = (spark.table("bronze_comptes")\n  .select("compte_id", "devise_ref")\n  .withColumn("zone", F.when(F.col("devise_ref") == "EUR", "ZONE_EURO").otherwise("DEVISE_ETRANGERE")))\ndisplay(df)'
+    },
+    {
+      id: 's5', group: 'spark', xp: 25, title: 'Palier 5 · Grouper, agréger et trier (.groupBy / .agg)',
+      brief: 'Jusqu\'ici, chaque ligne se traitait seule sur sa machine (transformations <em>étroites</em>). Avec <code>.groupBy("type_compte")</code>, Spark doit rassembler les lignes de même type depuis tous les workers : c\'est le fameux <strong>shuffle</strong> (<code>Exchange</code> dans le plan) !<br>Après <code>.groupBy(...)</code>, on appelle <code>.agg(...)</code> en nommant chaque calcul avec <code>.alias("...")</code>, puis <code>.orderBy(F.desc("..."))</code> pour trier.<br><strong>Ta mission :</strong> Sur <code>bronze_comptes</code>, calcule le nombre de comptes par <code>type_compte</code> (colonnes <code>type_compte</code> et <code>nb_comptes</code>), trié du plus fréquent au moins fréquent.',
+      starter: 'SELECT type_compte, count(*) AS nb_comptes\nFROM bronze_comptes\nGROUP BY type_compte\nORDER BY nb_comptes DESC;\n',
+      pyStarter: 'from pyspark.sql import functions as F\n\nstats = (spark.table("bronze_comptes")\n  .groupBy("type_compte")\n  .agg(F.count("*").alias("nb_comptes"))\n  .orderBy(F.desc("nb_comptes"))\n)\n\ndisplay(stats)\n',
+      hints: [
+        '<code>.agg(F.count("*").alias("nb_comptes"))</code> calcule le nombre de lignes et renomme la colonne en <code>nb_comptes</code>.',
+        '<code>.orderBy(F.desc("nb_comptes"))</code> trie par ordre décroissant.',
+        'SELECT type_compte, count(*) AS nb_comptes FROM bronze_comptes GROUP BY type_compte ORDER BY nb_comptes DESC;'
+      ],
+      expect: { sql: 'SELECT type_compte, count(*) AS nb_comptes FROM bronze_comptes GROUP BY type_compte ORDER BY nb_comptes DESC', ordered: true },
+      after: 'Ouvre le bloc « Plan d\'exécution Spark » sous le résultat : tu vois apparaître <code>Exchange hashpartitioning(type_compte)</code> et <code>HashAggregate</code> ! C\'est la trace physique du shuffle.',
+      py: 'from pyspark.sql import functions as F\n\nstats = (spark.table("bronze_comptes")\n  .groupBy("type_compte")\n  .agg(F.count("*").alias("nb_comptes"))\n  .orderBy(F.desc("nb_comptes")))\ndisplay(stats)'
+    },
+    {
+      id: 's6', group: 'spark', xp: 30, title: 'Palier 6 · Joindre deux tables (.join)',
+      brief: 'Dernier palier avant le grand bain ! Pour joindre deux DataFrames qui partagent le même nom de colonne de clé (ex. <code>"compte_id"</code>), écris simplement :<br><code>tx.join(cpt, "compte_id")</code> (jointure interne par défaut, ou passe <code>"left"</code> / <code>"left_anti"</code> en 3e argument).<br><strong>Ta mission :</strong> Joins <code>bronze_transactions</code> et <code>bronze_comptes</code> sur <code>"compte_id"</code>, puis calcule par <code>type_compte</code> le nombre d\'opérations (<code>operations</code>), trié par <code>operations</code> décroissant.',
+      starter: 'SELECT c.type_compte, count(*) AS operations\nFROM bronze_transactions t\nJOIN bronze_comptes c USING (compte_id)\nGROUP BY c.type_compte\nORDER BY operations DESC;\n',
+      pyStarter: 'from pyspark.sql import functions as F\n\ntx = spark.table("bronze_transactions")\ncpt = spark.table("bronze_comptes")\n\npar_type = (tx\n  .join(cpt, "compte_id")\n  .groupBy("type_compte")\n  .agg(F.count("*").alias("operations"))\n  .orderBy(F.desc("operations"))\n)\n\ndisplay(par_type)\n',
+      hints: [
+        'Passe <code>"compte_id"</code> en second argument de <code>.join(cpt, "compte_id")</code> : cela évite d\'avoir deux colonnes <code>compte_id</code> ambiguës.',
+        'Enchaîne ensuite <code>.groupBy("type_compte").agg(F.count("*").alias("operations")).orderBy(F.desc("operations"))</code>.',
+        'SELECT c.type_compte, count(*) AS operations FROM bronze_transactions t JOIN bronze_comptes c USING (compte_id) GROUP BY c.type_compte ORDER BY operations DESC;'
+      ],
+      expect: { sql: 'SELECT c.type_compte, count(*) AS operations FROM bronze_transactions t JOIN bronze_comptes c USING (compte_id) GROUP BY c.type_compte ORDER BY operations DESC', ordered: true },
+      after: 'Félicitations : tu as validé les 6 paliers de l\'École PySpark (<code>.select</code>, <code>.filter</code>, <code>.withColumn</code>, <code>F.when</code>, <code>.groupBy().agg()</code> et <code>.join</code>) ! Tu as maintenant toutes les cartes en main pour attaquer le pipeline de la Banque Lanterne ci-dessous.',
+      py: 'from pyspark.sql import functions as F\n\npar_type = (spark.table("bronze_transactions")\n  .join(spark.table("bronze_comptes"), "compte_id")\n  .groupBy("type_compte")\n  .agg(F.count("*").alias("operations"))\n  .orderBy(F.desc("operations")))\ndisplay(par_type)'
+    },
+    {
       id: 'm0', xp: 10, title: 'Bonjour, Lanterne',
       brief: 'La Banque Lanterne (fictive) vous confie ses fichiers. La plateforme les a déjà lus : les tables <code>bronze_*</code> sont dans le panneau de gauche. Première question : combien de lignes compte <code>bronze_transactions</code> ?',
       starter: '-- Écris une requête qui renvoie le nombre de lignes de bronze_transactions\n',
