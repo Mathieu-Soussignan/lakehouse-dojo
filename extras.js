@@ -1,4 +1,4 @@
-// Extras : examen blanc, palette de commandes, thème, sauvegarde, carte de profil, export notebooks Databricks, passeport d'équipe Keyrus, traducteur.
+// Extras : examen blanc, palette de commandes, thème, sauvegarde, carte de profil, export notebooks Databricks, starter kit Asset Bundle, passeport d'équipe Keyrus 1-clic, traducteur.
 (function () {
   const D = window.DOJO;
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -24,15 +24,16 @@
 
   /* ---------- palette de commandes ---------- */
   let palItems = null, palSel = 0, palList = [];
-  const TABS = [['#accueil', 'Accueil'], ['#parcours', 'Parcours'], ['#atelier', 'Simulateurs'], ['#labo', 'Labo SQL'], ['#examen', 'Examen blanc'], ['#quiz', 'Quiz'], ['#cartes', 'Flashcards'], ['#labs', 'Labs Databricks'], ['#memo', 'Mémo, Playbooks et Traducteur']];
+  const TABS = [['#accueil', 'Accueil'], ['#parcours', 'Parcours'], ['#atelier', 'Simulateurs'], ['#labo', 'Labo SQL & PySpark'], ['#examen', 'Examen blanc'], ['#quiz', 'Quiz'], ['#cartes', 'Flashcards'], ['#labs', 'Labs Databricks & Starter Kit'], ['#memo', 'Mémo, Playbooks et Traducteur']];
   function buildItems() {
     const I = TABS.map(t => ({ t: t[1], s: 'Aller à cette page', k: 'Page', h: t[0] }));
+    I.push({ t: 'Starter Kit Asset Bundle (Projet fil rouge)', s: 'Générer databricks.yml, notebooks Bronze/Silver/Gold, pytest et CI/CD', k: 'Outil', h: '#bundle', x: 'asset bundle dab ci cd pytest github actions databricks.yml' });
     D.modules.forEach((m, i) => I.push({
       t: (i + 1) + '. ' + m.title, s: m.sub, k: 'Module', h: '#module-' + m.id,
       x: strip(m.points.join(' ') + ' ' + m.traps.join(' ') + ' ' + (m.ask || []).join(' ') + ' ' + (m.answers || []).join(' '))
     }));
     (window.SIMS || []).forEach(s => I.push({ t: s.title, s: s.tag, k: 'Simulateur', h: '#sim-' + s.id }));
-    ((window.LAB && window.LAB.MISSIONS) || []).forEach((m, i) => I.push({ t: 'Mission ' + i + ' · ' + m.title, s: strip(m.brief).slice(0, 100), k: 'Labo SQL', h: '#labo-' + m.id }));
+    ((window.LAB && window.LAB.MISSIONS) || []).forEach((m, i) => I.push({ t: 'Mission ' + i + ' · ' + m.title, s: strip(m.brief).slice(0, 100), k: 'Labo SQL/PySpark', h: '#labo-' + m.id }));
     (D.playbooks || []).forEach(p => I.push({ t: p.title, s: p.tag + ' — ' + strip(p.reco).slice(0, 90), k: 'Playbook', h: '#memo', x: strip(p.ctx + ' ' + p.diag + ' ' + p.reco + ' ' + p.trap) }));
     D.glossary.forEach(g => I.push({ t: g[0], s: g[1], k: 'Glossaire', h: '#memo' }));
     return I;
@@ -45,7 +46,11 @@
     }).filter(Boolean).sort((a, b) => b.sc - a.sc).slice(0, 10).map(x => x.it);
     palSel = 0; $('pal-l').innerHTML = palList.length ? palList.map((it, i) => '<li><button data-i="' + i + '" class="' + (i === 0 ? 'on' : '') + '"><span class="kind">' + it.k + '</span><b>' + esc(it.t) + '</b><small>' + esc(it.s) + '</small></button></li>').join('') : '<li class="fine pal-empty">Aucun résultat. Essaie un terme comme VACUUM, MERGE, Unity Catalog, Skew, Fabric ou DirectQuery.</li>';
   }
-  function palGo(i) { const it = palList[i]; if (!it) return; closePal(); location.hash = it.h; }
+  function palGo(i) {
+    const it = palList[i]; if (!it) return; closePal();
+    if (it.h === '#bundle') { openBundleModal(); return; }
+    location.hash = it.h;
+  }
   function openPal() {
     palItems = palItems || buildItems();
     let p = $('pal');
@@ -126,7 +131,218 @@
     if (CTX) CTX.toast('Notebook téléchargé : ' + fname);
   }
 
-  /* ---------- passeport & classement d'équipe Keyrus (sans serveur) ---------- */
+  /* ---------- Générateur de Starter Kit Asset Bundle (Projet fil rouge Keyrus) ---------- */
+  function buildBundleFiles(proj, cat) {
+    const p = (proj || 'keyrus_lakehouse').replace(/[^a-z0-9_]/gi, '_').toLowerCase();
+    const c = (cat || 'ventes').replace(/[^a-z0-9_]/gi, '_').toLowerCase();
+    return [
+      ['databricks.yml', 'Configuration Asset Bundle (DAB)', `# Databricks Asset Bundle · Projet fil rouge Keyrus
+bundle:
+  name: ${p}
+
+variables:
+  catalog:
+    description: "Catalogue Unity Catalog cible"
+    default: ${c}_dev
+
+resources:
+  jobs:
+    ${p}_quotidien:
+      name: "[${'${bundle.target}'}] ${p}_quotidien"
+      parameters:
+        - name: catalog
+          default: ${'${var.catalog}'}
+        - name: date_traitement
+          default: "{{job.start_time.iso_date}}"
+      tasks:
+        - task_key: 01_bronze_ingest
+          notebook_task:
+            notebook_path: ./src/01_bronze_autoloader.py
+        - task_key: 02_silver_clean_merge
+          depends_on:
+            - task_key: 01_bronze_ingest
+          notebook_task:
+            notebook_path: ./src/02_silver_clean_merge.py
+        - task_key: 03_gold_agg
+          depends_on:
+            - task_key: 02_silver_clean_merge
+          sql_task:
+            warehouse_id: "<sql-warehouse-id>"
+            file:
+              path: ./src/03_gold_agg.sql
+
+targets:
+  dev:
+    mode: development
+    default: true
+    variables:
+      catalog: ${c}_dev
+  prod:
+    mode: production
+    variables:
+      catalog: ${c}_prod
+    run_as:
+      service_principal_name: "00000000-0000-0000-0000-000000000000"`],
+      ['src/01_bronze_autoloader.py', 'Ingestion Auto Loader (Bronze)', `# Databricks notebook source
+dbutils.widgets.text("catalog", "${c}_dev")
+cat = dbutils.widgets.get("catalog")
+
+volume_path = f"/Volumes/{cat}/bronze/landing"
+
+(spark.readStream
+  .format("cloudFiles")
+  .option("cloudFiles.format", "json")
+  .option("cloudFiles.schemaLocation", f"{volume_path}/_schemas/operations")
+  .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
+  .load(f"{volume_path}/operations/")
+  .writeStream
+  .option("checkpointLocation", f"{volume_path}/_checkpoints/operations_bronze")
+  .trigger(availableNow=True)
+  .toTable(f"{cat}.bronze.operations"))`],
+      ['src/02_silver_clean_merge.py', 'Nettoyage testable & MERGE idempotent (Silver)', `# Databricks notebook source
+from delta.tables import DeltaTable
+from pyspark.sql import Window, functions as F
+
+dbutils.widgets.text("catalog", "${c}_dev")
+cat = dbutils.widgets.get("catalog")
+
+def clean_operations(df):
+    """Fonction pure testable unitairement avec pytest (DataFrame -> DataFrame)."""
+    w = Window.partitionBy("transaction_id").orderBy(F.when(F.col("statut") == "ANNULEE", 0).otherwise(1))
+    return (df
+        .filter("montant <> 0 AND compte_id IS NOT NULL")
+        .withColumn("devise", F.upper(F.trim("devise")))
+        .withColumn("_rn", F.row_number().over(w))
+        .filter("_rn = 1")
+        .drop("_rn"))
+
+lot_propre = clean_operations(spark.read.table(f"{cat}.bronze.operations"))
+
+spark.sql(f"""
+  CREATE TABLE IF NOT EXISTS {cat}.silver.operations (
+    transaction_id STRING, compte_id STRING, horodatage TIMESTAMP,
+    montant DOUBLE, devise STRING, statut STRING
+  ) CLUSTER BY (compte_id)
+""")
+
+(DeltaTable.forName(spark, f"{cat}.silver.operations").alias("t")
+  .merge(lot_propre.alias("s"), "t.transaction_id = s.transaction_id")
+  .whenMatchedUpdate(condition="s.statut = 'ANNULEE' AND t.statut <> 'ANNULEE'", set={"statut": "'ANNULEE'"})
+  .whenNotMatchedInsertAll()
+  .execute())
+
+nb = spark.read.table(f"{cat}.silver.operations").count()
+dbutils.jobs.taskValues.set(key="nb_lignes_silver", value=nb)`],
+      ['src/03_gold_agg.sql', 'Agrégation Gold & Liquid Clustering', `-- Table Gold organisée avec Liquid Clustering
+CREATE TABLE IF NOT EXISTS IDENTIFIER(:catalog || '.gold.flux_mensuels') (
+  mois DATE,
+  devise STRING,
+  operations BIGINT,
+  montant_net DOUBLE
+) CLUSTER BY (mois, devise);
+
+-- Remplacement atomique sur le périmètre calculé
+INSERT INTO IDENTIFIER(:catalog || '.gold.flux_mensuels')
+REPLACE WHERE mois >= date_trunc('month', CAST(:date_traitement AS DATE))
+SELECT
+  CAST(date_trunc('month', horodatage) AS DATE) AS mois,
+  devise,
+  count(*) AS operations,
+  round(sum(montant), 2) AS montant_net
+FROM IDENTIFIER(:catalog || '.silver.operations')
+WHERE statut = 'VALIDEE'
+  AND CAST(date_trunc('month', horodatage) AS DATE) >= date_trunc('month', CAST(:date_traitement AS DATE))
+GROUP BY ALL;`],
+      ['tests/test_transforms.py', 'Tests unitaires PySpark (pytest)', `# Exécuté automatiquement dans la CI à chaque Pull Request : pytest tests/
+from pyspark.sql import SparkSession
+from src.silver_transforms import clean_operations
+
+def test_clean_operations_dedup_and_normalize():
+    spark = SparkSession.builder.master("local[1]").appName("tests").getOrCreate()
+    raw = spark.createDataFrame([
+        ("TX1", "CPT1", 100.0, " eur ", "VALIDEE"),
+        ("TX1", "CPT1", 100.0, "EUR", "ANNULEE"),
+        ("TX2", "CPT2", 0.0, "EUR", "VALIDEE"),
+    ], ["transaction_id", "compte_id", "montant", "devise", "statut"])
+
+    res = clean_operations(raw).collect()
+    assert len(res) == 1
+    assert res[0]["transaction_id"] == "TX1"
+    assert res[0]["devise"] == "EUR"
+    assert res[0]["statut"] == "ANNULEE"`],
+      ['.github/workflows/deploy.yml', 'Pipeline CI/CD GitHub Actions', `name: Deploy Databricks Asset Bundle
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  validate-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run unit tests
+        run: pip install pyspark pytest && pytest tests/
+      - uses: databricks/setup-cli@main
+      - name: Validate Asset Bundle
+        run: databricks bundle validate -t prod
+        env:
+          DATABRICKS_HOST: \${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: \${{ secrets.SP_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: \${{ secrets.SP_CLIENT_SECRET }}
+      - name: Deploy to Production on merge
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: databricks bundle deploy -t prod
+        env:
+          DATABRICKS_HOST: \${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: \${{ secrets.SP_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: \${{ secrets.SP_CLIENT_SECRET }}`]
+    ];
+  }
+  function openBundleModal() {
+    let proj = 'keyrus_lakehouse', cat = 'banque_lanterne', curIdx = 0;
+    const render = () => {
+      const files = buildBundleFiles(proj, cat), f = files[curIdx];
+      const m = modal(
+        '<div class="hstack between"><h2>🧰 Starter Kit Asset Bundle (Projet fil rouge)</h2><span class="pill ok">Prêt pour la prod</span></div>' +
+        '<p class="muted">Personnalise le nom de ton bundle et de ton catalogue : les 6 fichiers d\'industrialisation (YAML, Auto Loader, MERGE testable, Gold Liquid Clustering, pytest et CI/CD) s\'adaptent automatiquement.</p>' +
+        '<div class="hstack"><label class="fine">Nom du bundle <input id="b-proj" class="search" style="max-width:190px;display:inline-block;margin-left:6px" value="' + esc(proj) + '"></label>' +
+        '<label class="fine">Catalogue <input id="b-cat" class="search" style="max-width:170px;display:inline-block;margin-left:6px" value="' + esc(cat) + '"></label></div>' +
+        '<div class="seg">' + files.map((x, i) => '<button data-bf="' + i + '" class="' + (i === curIdx ? 'on' : '') + '">' + esc(x[0]) + '</button>').join('') + '</div>' +
+        '<div class="codehead"><span><b>' + esc(f[0]) + '</b> · ' + esc(f[1]) + '</span><button id="b-copy">Copier ce fichier</button></div>' +
+        '<pre id="b-code" style="max-height:290px;overflow:auto">' + esc(f[2]) + '</pre>' +
+        '<div class="hstack between"><button id="b-dl-nb" class="b-primary">⬇ Télécharger tout le Starter Kit (.ipynb)</button><button data-close>Fermer</button></div>'
+      );
+      m.querySelector('#b-proj').onchange = e => { proj = e.target.value.trim() || 'keyrus_lakehouse'; render(); };
+      m.querySelector('#b-cat').onchange = e => { cat = e.target.value.trim() || 'banque_lanterne'; render(); };
+      m.querySelectorAll('[data-bf]').forEach(b => b.onclick = () => { curIdx = +b.dataset.bf; render(); });
+      m.querySelector('#b-copy').onclick = e => {
+        try { navigator.clipboard.writeText(f[2]); } catch (err) { }
+        e.target.textContent = '✓ Copié !';
+        setTimeout(() => e.target.textContent = 'Copier ce fichier', 1400);
+      };
+      m.querySelector('#b-dl-nb').onclick = () => {
+        const cells = [mdCell('# Starter Kit Databricks Asset Bundle · ' + proj + '\nCe notebook rassemble tous les fichiers du projet fil rouge Keyrus (`' + proj + '`) pour le catalogue `' + cat + '`.')];
+        files.forEach(([path, desc, content]) => {
+          cells.push(mdCell('## Fichier : `' + path + '`\n*' + desc + '*'));
+          cells.push(codeCell(path.endsWith('.yml') ? '# ' + path + '\n# ' + content.split('\n').join('\n# ') : content));
+        });
+        const nb = { nbformat: 4, nbformat_minor: 5, metadata: { kernelspec: { display_name: 'Python 3', language: 'python', name: 'python3' } }, cells };
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([JSON.stringify(nb, null, 2)], { type: 'application/x-ipynb+json' }));
+        a.download = proj + '-starter-kit.ipynb';
+        document.body.appendChild(a); a.click(); a.remove();
+        if (CTX) CTX.toast('Starter Kit téléchargé : ' + proj + '-starter-kit.ipynb');
+      };
+    };
+    render();
+  }
+
+  /* ---------- passeport & lien magique 1-clic d'équipe Keyrus (sans serveur) ---------- */
   const b64e = s => btoa(encodeURIComponent(s).replace(/%([0-9A-F]{2})/g, (_, p) => String.fromCharCode('0x' + p)));
   const b64d = s => decodeURIComponent(Array.from(atob(s), c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
   function getName() { try { return localStorage.getItem('lakehouse-dojo-name') || ''; } catch (e) { return ''; } }
@@ -145,11 +361,15 @@
     };
     return 'DOJO1:' + b64e(JSON.stringify(payload));
   }
+  function myMagicLink() {
+    const base = (location.origin && location.origin !== 'null' ? location.origin : '') + (location.pathname || '/');
+    return base + '#peer-' + myToken();
+  }
   function importTokens(raw) {
     const matches = String(raw).match(/DOJO1:[A-Za-z0-9+/=]+/g) || [];
-    if (!matches.length) return 0;
+    if (!matches.length) return { count: 0, lastIdx: null, lastName: '' };
     const peers = (CTX.S.peers || []).slice();
-    let added = 0;
+    let count = 0, lastIdx = null, lastName = '';
     matches.forEach(tok => {
       try {
         const p = JSON.parse(b64d(tok.slice(6)));
@@ -164,12 +384,14 @@
           tr: p.tr || 'all'
         };
         const idx = peers.findIndex(x => x.n.toLowerCase() === clean.n.toLowerCase());
-        if (idx >= 0) peers[idx] = clean; else peers.push(clean);
-        added++;
+        if (idx >= 0) { peers[idx] = clean; lastIdx = idx; }
+        else { peers.push(clean); lastIdx = peers.length - 1; }
+        lastName = clean.n;
+        count++;
       } catch (e) { }
     });
-    if (added) { CTX.S.peers = peers; CTX.save(); }
-    return added;
+    if (count) { CTX.S.peers = peers; CTX.save(); }
+    return { count, lastIdx, lastName };
   }
   function loadDemoPeers() {
     CTX.S.peers = [
@@ -181,35 +403,40 @@
   }
   function openTeamModal(onUpdate) {
     const render = () => {
-      const name = getName(), tok = myToken(), peers = CTX.S.peers || [];
+      const name = getName(), link = myMagicLink(), peers = CTX.S.peers || [];
       const m = modal(
-        '<h2>Dojo d\'équipe Keyrus · Partage sans serveur</h2>' +
-        '<p class="muted">Chaque collaborateur avance à son rythme : copie ton jeton de progression dans le canal Teams de l\'équipe et colle ceux de tes collègues pour comparer vos radars et animer le classement.</p>' +
-        '<div class="hstack"><label for="t-nm" class="fine">Ton prénom / nom</label><input id="t-nm" class="search" style="max-width:240px" value="' + esc(name) + '" placeholder="Ex. Mathieu (Keyrus)"><button id="t-copy" class="b-primary">Copier mon jeton Teams</button></div>' +
-        '<pre class="mini" style="word-break:break-all;white-space:pre-wrap;font-size:11px">' + esc(tok) + '</pre>' +
-        '<h3>Ajouter des collègues</h3>' +
-        '<textarea id="t-in" placeholder="Colle ici un ou plusieurs messages Teams contenant un code DOJO1:…"></textarea>' +
+        '<h2>Dojo d\'équipe Keyrus · Lien magique 1-clic</h2>' +
+        '<p class="muted">Envoie ton <b>lien magique</b> dans le canal Teams Keyrus : dès qu\'un collègue clique dessus, ton profil s\'ajoute automatiquement à son classement et se superpose à son radar !</p>' +
+        '<div class="hstack"><label for="t-nm" class="fine">Ton prénom / nom</label><input id="t-nm" class="search" style="max-width:220px" value="' + esc(name) + '" placeholder="Ex. Mathieu (Keyrus)">' +
+        '<button id="t-link" class="b-primary">🔗 Copier mon lien magique (1-clic)</button></div>' +
+        '<pre class="mini" style="word-break:break-all;white-space:pre-wrap;font-size:11px">' + esc(link) + '</pre>' +
+        '<h3>Ou coller un lien / jeton reçu</h3>' +
+        '<textarea id="t-in" style="min-height:76px" placeholder="Colle ici un message Teams contenant un lien #peer-DOJO1:… ou un code DOJO1:…"></textarea>' +
         '<div class="hstack between"><div class="hstack"><button id="t-add" class="b-primary">Importer dans mon classement</button>' +
         (!peers.length ? '<button id="t-demo" class="small">Charger 3 profils démo Keyrus</button>' : '<button id="t-clear" class="small b-warn">Vider la liste (' + peers.length + ')</button>') +
         '</div><button data-close>Fermer</button></div>'
       );
       const inp = m.querySelector('#t-nm');
-      inp.oninput = () => { setName(inp.value.trim()); m.querySelector('pre.mini').textContent = myToken(); if (onUpdate) onUpdate(); };
-      m.querySelector('#t-copy').onclick = e => {
+      inp.oninput = () => { setName(inp.value.trim()); m.querySelector('pre.mini').textContent = myMagicLink(); if (onUpdate) onUpdate(); };
+      m.querySelector('#t-link').onclick = e => {
         setName(inp.value.trim());
-        const t = myToken();
-        try { navigator.clipboard.writeText('Mon passeport Lakehouse Dojo (' + (inp.value.trim() || 'Keyrus') + ' · ' + CTX.profile().xp + ' XP) :\n' + t); } catch (err) { }
-        e.target.textContent = '✓ Copié pour Teams !';
-        setTimeout(() => e.target.textContent = 'Copier mon jeton Teams', 1600);
+        const l = myMagicLink();
+        try { navigator.clipboard.writeText(l); } catch (err) { }
+        e.target.textContent = '✓ Lien magique copié !';
+        setTimeout(() => e.target.textContent = '🔗 Copier mon lien magique (1-clic)', 1800);
         if (onUpdate) onUpdate();
       };
       m.querySelector('#t-add').onclick = () => {
-        const n = importTokens(m.querySelector('#t-in').value);
-        if (n) { CTX.toast(n + ' profil(s) collègue(s) importé(s)'); if (onUpdate) onUpdate(); m.hidden = true; }
-        else CTX.toast('Aucun jeton DOJO1:… trouvé dans le texte collé');
+        const res = importTokens(m.querySelector('#t-in').value);
+        if (res.count) {
+          CTX.S.comparePeer = res.lastIdx; CTX.save();
+          CTX.toast(res.count + ' profil(s) importé(s) (' + res.lastName + ')');
+          if (onUpdate) onUpdate();
+          m.hidden = true;
+        } else CTX.toast('Aucun lien ou jeton DOJO1:… trouvé dans le texte collé');
       };
       const demo = m.querySelector('#t-demo');
-      if (demo) demo.onclick = () => { loadDemoPeers(); CTX.toast('3 profils démo Keyrus ajoutés'); if (onUpdate) onUpdate(); m.hidden = true; };
+      if (demo) demo.onclick = () => { loadDemoPeers(); CTX.S.comparePeer = 1; CTX.save(); CTX.toast('3 profils démo Keyrus ajoutés'); if (onUpdate) onUpdate(); m.hidden = true; };
       const clr = m.querySelector('#t-clear');
       if (clr) clr.onclick = () => { CTX.S.peers = []; CTX.S.comparePeer = null; CTX.save(); if (onUpdate) onUpdate(); render(); };
     };
@@ -229,7 +456,7 @@
     g.fillStyle = P.belt.color; g.fillRect(64, 290, 360, 34); g.strokeStyle = 'rgba(255,255,255,.35)'; g.strokeRect(64, 290, 360, 34); g.fillRect(222, 282, 44, 50); g.strokeRect(222, 282, 44, 50);
     g.fillStyle = '#e2eef0'; g.font = '700 34px Figtree, Segoe UI, sans-serif'; g.fillText('Ceinture ' + P.belt.name, 64, 385);
     g.fillStyle = '#4fc4d6'; g.font = '700 64px Figtree, Segoe UI, sans-serif'; g.fillText(P.xp + ' XP', 64, 460);
-    g.fillStyle = '#8fabb2'; g.font = '500 22px Figtree, Segoe UI, sans-serif'; g.fillText(P.seals.length + ' sceaux · ' + P.missions + ' missions SQL · ' + P.sims + ' simulateurs', 64, 505);
+    g.fillStyle = '#8fabb2'; g.font = '500 22px Figtree, Segoe UI, sans-serif'; g.fillText(P.seals.length + ' sceaux · ' + P.missions + ' missions SQL/PySpark · ' + P.sims + ' simulateurs', 64, 505);
     // sceaux
     P.seals.slice(0, 12).forEach((s, i) => { const x = 64 + (i % 6) * 62, y = 535 + Math.floor(i / 6) * 48; g.strokeStyle = '#e0574c'; g.lineWidth = 3; g.strokeRect(x, y, 40, 40); g.fillStyle = '#e0574c'; g.font = '700 22px Georgia, serif'; g.fillText(s.l, x + 12, y + 29); });
     // radar
@@ -270,7 +497,7 @@
   function buildExam() {
     const pool = D.modules.flatMap(m => m.quiz.map(q => ({ ...q, m: m.id }))).concat(D.exam || []);
     const byMod = {}; shuffle(pool).forEach(q => (byMod[q.m] = byMod[q.m] || []).push(q));
-    let qs = Object.values(byMod).map(l => l.shift()); // au moins une question par module
+    let qs = Object.values(byMod).map(l => l.shift());
     qs = qs.concat(shuffle(Object.values(byMod).flat())).slice(0, N);
     return shuffle(qs).map(q => { const opts = shuffle(q.o.map((t, i) => ({ t, ok: i === q.a }))); return { m: q.m, q: q.q, o: opts.map(x => x.t), a: opts.findIndex(x => x.ok), e: q.e }; });
   }
@@ -327,6 +554,6 @@
   window.Extras = {
     init(ctx) { CTX = ctx; }, exam: (root, ctx) => { CTX = ctx; examView(root); },
     themeLabel, cycleTheme, openPalette: openPal, exportProgress, importProgress, openCard,
-    downloadNotebook, openTeamModal, getName, translatorHtml, modal
+    downloadNotebook, openBundleModal, openTeamModal, importTokens, myMagicLink, getName, translatorHtml, modal
   };
 })();

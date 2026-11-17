@@ -41,6 +41,7 @@
     ['Z', 'Bilan bouclé', 'Silver, rejets et doublons réconciliés', () => labDone('m3')],
     ['I', 'Idempotent', 'Upsert rejouable sans dégât', () => labDone('m7')],
     ['K', 'Maître Lanterne', 'Lot de 3 jours et alerte SQL validés', () => labDone('m8') && labDone('m9')],
+    ['Y', 'Bilingue Spark', 'Trois missions du Labo validées en PySpark', () => Object.keys((S.lab && S.lab.pyDone) || {}).length >= 3],
     ['X', 'Certifiable', 'Examen blanc réussi à 70 %', () => !!(S.exam && S.exam.best >= 0.7)],
     ['N', 'Ceinture noire', '1 300 XP atteints', () => xp() >= 1300]
   ];
@@ -135,8 +136,8 @@
     const all = [{ me: true, n: meName, xp: myP.xp, s: myP.seals.length, m: myP.missions, sm: myP.sims, tr: curTrack() }]
       .concat(peers.map((p, idx) => ({ me: false, idx, ...p })))
       .sort((a, b) => b.xp - a.xp);
-    return '<section class="panel"><div class="hstack between"><div><h2>Dojo d\'équipe Keyrus</h2><p class="muted">Partage ton jeton dans Teams ou compare ton radar avec celui de tes collègues.</p></div>' +
-      '<div class="hstack"><button id="team-open" class="b-primary">Partager / Importer un collègue</button></div></div>' +
+    return '<section class="panel"><div class="hstack between"><div><h2>Dojo d\'équipe Keyrus</h2><p class="muted">Envoie ton lien magique 1-clic dans Teams ou compare ton radar avec celui de tes collègues.</p></div>' +
+      '<div class="hstack"><button id="magic-link-btn" class="b-primary">🔗 Copier mon lien magique (1-clic)</button><button id="team-open">Gérer / Importer</button></div></div>' +
       '<div class="lb">' + all.map((r, i) => {
         const b = beltIdx(r.xp), trLabel = (D.tracks[r.tr || 'all'] || D.tracks.all).label;
         const isComp = !r.me && S.comparePeer === r.idx;
@@ -176,7 +177,8 @@
       '<section class="panel"><h2>Plan sur quatre semaines</h2><div class="scroll"><table class="plain"><tr><th>Quand</th><th>Objectif</th><th>Modules</th></tr>' +
       D.plan.map(s => '<tr><td><b>' + s.when + '</b></td><td>' + s.what + '</td><td>' + s.mods.map(id => '<a href="#module-' + id + '">' + num(mod(id)) + '</a>').join(' · ') + '</td></tr>').join('') + '</table></div></section>' +
 
-      '<section class="panel"><div class="head"><h2>Projet fil rouge</h2><p class="muted">Un pipeline complet que tu peux montrer et expliquer en entretien ou avant-vente : c\'est lui qui te rend crédible.</p></div>' +
+      '<section class="panel"><div class="hstack between"><div class="head"><h2>Projet fil rouge</h2><p class="muted">Un pipeline complet que tu peux montrer et expliquer en entretien ou avant-vente : c\'est lui qui te rend crédible.</p></div>' +
+      '<button id="bundle-btn" class="b-primary">🧰 Générer le Starter Kit Asset Bundle</button></div>' +
       D.projet.map((t, i) => '<label class="chk"><input type="checkbox" id="pj' + i + '" data-projet="' + i + '"' + (S.projet[i] ? ' checked' : '') + '><span>' + t + '</span></label>').join('') + '</section>' +
 
       '<div class="hstack"><button id="card-btn" class="b-primary">Ma carte de profil</button><button id="save-btn">Sauvegarder ma progression</button><button id="load-btn">Restaurer</button><input type="file" id="load-file" accept="application/json,.json" hidden><button id="export">Copier mes notes</button><button id="reset">Réinitialiser ma progression</button></div><div id="export-out"></div>';
@@ -308,9 +310,9 @@
         : '<div class="hstack between"><button id="show" class="b-primary" style="flex:1;padding:12px 18px">Voir la réponse <kbd>Espace</kbd></button></div>');
   }
   function labsView() {
-    return '<div class="head"><h1>Labs Databricks</h1><p class="muted">À réaliser dans Databricks Free Edition (gratuite et sans carte bancaire) ou sur un workspace de formation. Télécharge les notebooks prêts à l\'emploi (<code>.ipynb</code>) avec rappels de cours, énoncés et solutions.</p></div>' +
-      '<section class="panel"><div class="hstack between"><div><h2>Pack complet des 11 Labs</h2><p class="muted">Un fichier unique <code>.ipynb</code> à importer dans Databricks (<code>Workspace &gt; Import</code>) contenant tous les exercices et corrigés.</p></div>' +
-      '<button data-nb="all" class="b-primary">⬇ Télécharger les 11 Labs (.ipynb)</button></div></section>' +
+    return '<div class="head"><h1>Labs Databricks & Starter Kit</h1><p class="muted">À réaliser dans Databricks Free Edition (gratuite et sans carte bancaire) ou sur un workspace de formation. Télécharge les notebooks prêts à l\'emploi (<code>.ipynb</code>) avec rappels de cours, énoncés et solutions.</p></div>' +
+      '<section class="panel"><div class="hstack between"><div><h2>Pack complet des 11 Labs & Starter Kit Asset Bundle</h2><p class="muted">Importe les 11 TP dans Databricks (<code>Workspace &gt; Import</code>) ou génère le squelette industriel de ton projet fil rouge.</p></div>' +
+      '<div class="hstack"><button data-nb="all" class="b-primary">⬇ Télécharger les 11 Labs (.ipynb)</button><button id="bundle-btn">🧰 Starter Kit Asset Bundle</button></div></div></section>' +
       '<div class="list">' +
       D.modules.map(m => '<div class="mcard' + (S.labs[m.id] ? ' full' : '') + '"><span class="num">' + (S.labs[m.id] ? '✓' : num(m)) + '</span>' +
         '<a href="#module-' + m.id + '" style="text-decoration:none;color:inherit"><b>' + esc(m.lab.title) + '</b><small>' + esc(m.title) + ' · ' + m.lab.time + '</small></a>' +
@@ -332,6 +334,12 @@
   function render() {
     const h = location.hash.replace(/^#/, ''), k = h.indexOf('-'), r = k < 0 ? h : h.slice(0, k), arg = k < 0 ? '' : h.slice(k + 1);
     let html;
+    if (r === 'peer' && arg) {
+      const res = window.Extras.importTokens(arg);
+      if (res.count) { S.comparePeer = res.lastIdx; save(); confetti(); toast('🎉 Profil de ' + res.lastName + ' importé et superposé sur ton radar !'); }
+      location.hash = '#accueil';
+      return;
+    }
     if (r === 'labo') { tab = 'labo'; $('view').innerHTML = ''; rail(); window.SQLLab.mount($('view'), ctx, arg); return; }
     if (r === 'examen') { tab = 'examen'; $('view').innerHTML = ''; rail(); window.Extras.exam($('view'), ctx); return; }
     if (r === 'parcours') { html = parcours(); tab = 'parcours'; }
@@ -376,6 +384,8 @@
     const t = e.target.closest('button'); if (!t) return;
     const d = t.dataset;
     if (t.id === 'palette-btn') { window.Extras.openPalette(); return; }
+    if (t.id === 'bundle-btn') { window.Extras.openBundleModal(); return; }
+    if (t.id === 'magic-link-btn') { copyText(window.Extras.myMagicLink(), t, '🔗 Copier mon lien magique (1-clic)'); toast('Lien magique copié : colle-le dans Teams !'); return; }
     if (t.id === 'team-btn' || t.id === 'team-open') { window.Extras.openTeamModal(() => render()); return; }
     if (t.id === 'theme-btn') { window.Extras.cycleTheme(); rail(); return; }
     if (t.id === 'card-btn') { window.Extras.openCard(); return; }
