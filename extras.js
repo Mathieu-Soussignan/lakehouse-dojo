@@ -9,8 +9,8 @@
   let CTX = null;
 
   /* ---------- thème ---------- */
-  const THEME_KEY = 'lakehouse-dojo-theme', THEMES = [['system', 'Système'], ['light', 'Clair'], ['dark', 'Sombre']];
-  const getTheme = () => { try { return localStorage.getItem(THEME_KEY) || 'system'; } catch (e) { return 'system'; } };
+  const THEME_KEY = 'lakehouse-dojo-theme', THEMES = [['dark', 'Sombre (Obsidian)'], ['light', 'Clair (Alabaster)'], ['system', 'Système']];
+  const getTheme = () => { try { return localStorage.getItem(THEME_KEY) || 'dark'; } catch (e) { return 'dark'; } };
   function applyTheme(t) { if (t === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t); }
   function cycleTheme() { const i = (THEMES.findIndex(x => x[0] === getTheme()) + 1) % THEMES.length; try { localStorage.setItem(THEME_KEY, THEMES[i][0]); } catch (e) { } applyTheme(THEMES[i][0]); }
   const themeLabel = () => THEMES.find(x => x[0] === getTheme())[1];
@@ -443,32 +443,57 @@ jobs:
     render();
   }
 
-  /* ---------- carte de profil ---------- */
+  /* ---------- carte de profil & certificat ---------- */
   function drawCard(name) {
     const P = CTX.profile(), c = document.createElement('canvas'); c.width = 1200; c.height = 630; const g = c.getContext('2d');
-    const bg = g.createLinearGradient(0, 0, 1200, 630); bg.addColorStop(0, '#0a1a20'); bg.addColorStop(1, '#11333d'); g.fillStyle = bg; g.fillRect(0, 0, 1200, 630);
-    g.strokeStyle = 'rgba(79,196,214,.12)'; g.lineWidth = 1; for (let x = 0; x < 1200; x += 40) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 630); g.stroke(); }
-    for (let y = 0; y < 630; y += 40) { g.beginPath(); g.moveTo(0, y); g.lineTo(1200, y); g.stroke(); }
-    g.fillStyle = '#e2eef0'; g.font = '700 54px "Bricolage Grotesque", Georgia, serif'; g.fillText('Lakehouse', 64, 100); g.fillStyle = '#4fc4d6'; g.fillText('Dojo', 316, 100);
+    const bg = g.createLinearGradient(0, 0, 1200, 630); bg.addColorStop(0, '#050c11'); bg.addColorStop(0.55, '#0b1d27'); bg.addColorStop(1, '#112c39'); g.fillStyle = bg; g.fillRect(0, 0, 1200, 630);
+    // Subtle dot grid + border frame
+    g.strokeStyle = 'rgba(56,210,230,.08)'; g.lineWidth = 1;
+    for (let x = 0; x < 1200; x += 36) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 630); g.stroke(); }
+    for (let y = 0; y < 630; y += 36) { g.beginPath(); g.moveTo(0, y); g.lineTo(1200, y); g.stroke(); }
+    g.strokeStyle = 'rgba(56,210,230,.32)'; g.lineWidth = 2; g.strokeRect(24, 24, 1152, 582);
+
+    g.fillStyle = '#38d2e6'; g.font = '700 15px "JetBrains Mono", monospace'; g.fillText('KEYRUS DATA & AI ACADEMY · SIGNATURE CREDENTIAL', 64, 72);
+    g.fillStyle = '#eaf4f7'; g.font = '800 50px "Bricolage Grotesque", Georgia, serif'; g.fillText('Lakehouse', 64, 125); g.fillStyle = '#38d2e6'; g.fillText('Dojo', 318, 125);
     const trk = (D.tracks && D.tracks[CTX.S.track || 'all']) || { label: 'Parcours Databricks' };
-    g.fillStyle = '#8fabb2'; g.font = '500 22px Figtree, Segoe UI, sans-serif'; g.fillText('Keyrus · ' + trk.label, 64, 140);
-    g.fillStyle = '#e2eef0'; g.font = '700 44px Figtree, Segoe UI, sans-serif'; g.fillText(name || 'Consultant Keyrus', 64, 250);
-    g.fillStyle = P.belt.color; g.fillRect(64, 290, 360, 34); g.strokeStyle = 'rgba(255,255,255,.35)'; g.strokeRect(64, 290, 360, 34); g.fillRect(222, 282, 44, 50); g.strokeRect(222, 282, 44, 50);
-    g.fillStyle = '#e2eef0'; g.font = '700 34px Figtree, Segoe UI, sans-serif'; g.fillText('Ceinture ' + P.belt.name, 64, 385);
-    g.fillStyle = '#4fc4d6'; g.font = '700 64px Figtree, Segoe UI, sans-serif'; g.fillText(P.xp + ' XP', 64, 460);
-    g.fillStyle = '#8fabb2'; g.font = '500 22px Figtree, Segoe UI, sans-serif'; g.fillText(P.seals.length + ' sceaux · ' + P.missions + ' missions SQL/PySpark · ' + P.sims + ' simulateurs', 64, 505);
-    // sceaux
-    P.seals.slice(0, 12).forEach((s, i) => { const x = 64 + (i % 6) * 62, y = 535 + Math.floor(i / 6) * 48; g.strokeStyle = '#e0574c'; g.lineWidth = 3; g.strokeRect(x, y, 40, 40); g.fillStyle = '#e0574c'; g.font = '700 22px Georgia, serif'; g.fillText(s.l, x + 12, y + 29); });
-    // radar
-    const cx = 900, cy = 330, R = 190, n = P.domains.length, pt = (i, r) => [cx + Math.cos(-Math.PI / 2 + i * 2 * Math.PI / n) * r, cy + Math.sin(-Math.PI / 2 + i * 2 * Math.PI / n) * r];
-    g.lineWidth = 1; [0.25, 0.5, 0.75, 1].forEach(k => { g.beginPath(); P.domains.forEach((_, i) => { const p = pt(i, R * k); i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); }); g.closePath(); g.strokeStyle = 'rgba(143,171,178,.35)'; g.stroke(); });
-    g.beginPath(); P.domains.forEach((d, i) => { const p = pt(i, Math.max(8, R * d.score)); i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); }); g.closePath(); g.fillStyle = 'rgba(79,196,214,.3)'; g.fill(); g.strokeStyle = '#4fc4d6'; g.lineWidth = 3; g.stroke();
-    g.fillStyle = '#8fabb2'; g.font = '600 18px Figtree, Segoe UI, sans-serif'; P.domains.forEach((d, i) => { const p = pt(i, R + 24); g.textAlign = Math.abs(p[0] - cx) < 10 ? 'center' : p[0] > cx ? 'left' : 'right'; g.fillText(d.n, p[0], p[1] + 6); }); g.textAlign = 'left';
+    g.fillStyle = '#8aa7b0'; g.font = '500 20px Figtree, Segoe UI, sans-serif'; g.fillText(trk.label, 64, 158);
+
+    g.fillStyle = '#eaf4f7'; g.font = '700 42px Figtree, Segoe UI, sans-serif'; g.fillText(name || 'Consultant Keyrus', 64, 224);
+    g.fillStyle = '#f5b82e'; g.font = '700 18px Figtree, Segoe UI, sans-serif'; g.fillText('★ ' + (P.rank || 'Architecte Lakehouse') + ' · Ceinture ' + P.belt.name, 64, 256);
+
+    // Belt + XP
+    g.fillStyle = P.belt.color; g.fillRect(64, 274, 340, 26); g.strokeStyle = 'rgba(255,255,255,.35)'; g.strokeRect(64, 274, 340, 26); g.fillRect(214, 268, 40, 38); g.strokeRect(214, 268, 40, 38);
+    g.fillStyle = '#38d2e6'; g.font = '800 52px "Bricolage Grotesque", sans-serif'; g.fillText(P.xp + ' XP', 64, 355);
+    g.fillStyle = '#8aa7b0'; g.font = '500 19px Figtree, Segoe UI, sans-serif'; g.fillText(P.seals.length + ' sceaux · ' + P.missions + '/24 défis Code · ' + P.sims + '/17 simulateurs', 64, 388);
+
+    // 3-Pillar Trinity Bars
+    const tri = P.trinity || { py: 0, sp: 0, db: 0 };
+    [['Python Data', tri.py, '#60a5fa'], ['Spark & PySpark', tri.sp, '#fbbf24'], ['Databricks & Delta', tri.db, '#38d2e6']].forEach(([lbl, pct, col], idx) => {
+      const y = 415 + idx * 34;
+      g.fillStyle = '#eaf4f7'; g.font = '600 16px Figtree, sans-serif'; g.fillText(lbl, 64, y + 14);
+      g.fillStyle = 'rgba(255,255,255,.09)'; g.fillRect(220, y + 2, 230, 12);
+      g.fillStyle = col; g.fillRect(220, y + 2, Math.max(6, 2.3 * pct), 12);
+      g.fillStyle = col; g.font = '700 15px "JetBrains Mono", monospace'; g.fillText(pct + '%', 460, y + 13);
+    });
+
+    // Seals
+    P.seals.slice(0, 10).forEach((s, i) => {
+      const x = 64 + i * 48, y = 532;
+      g.strokeStyle = '#f05a4f'; g.lineWidth = 2.5; g.strokeRect(x, y, 36, 36);
+      g.fillStyle = '#f05a4f'; g.font = '700 20px Georgia, serif'; g.fillText(s.l, x + 10, y + 25);
+    });
+
+    // Radar Constellation
+    const cx = 895, cy = 330, R = 185, n = P.domains.length, pt = (i, r) => [cx + Math.cos(-Math.PI / 2 + i * 2 * Math.PI / n) * r, cy + Math.sin(-Math.PI / 2 + i * 2 * Math.PI / n) * r];
+    g.lineWidth = 1; [0.25, 0.5, 0.75, 1].forEach(k => { g.beginPath(); P.domains.forEach((_, i) => { const p = pt(i, R * k); i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); }); g.closePath(); g.strokeStyle = 'rgba(138,167,176,.3)'; g.stroke(); });
+    P.domains.forEach((_, i) => { const p = pt(i, R); g.beginPath(); g.moveTo(cx, cy); g.lineTo(p[0], p[1]); g.strokeStyle = 'rgba(138,167,176,.22)'; g.stroke(); });
+    g.beginPath(); P.domains.forEach((d, i) => { const p = pt(i, Math.max(8, R * d.score)); i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); }); g.closePath(); g.fillStyle = 'rgba(56,210,230,.28)'; g.fill(); g.strokeStyle = '#38d2e6'; g.lineWidth = 3; g.stroke();
+    g.fillStyle = '#eaf4f7'; g.font = '600 17px Figtree, Segoe UI, sans-serif'; P.domains.forEach((d, i) => { const p = pt(i, R + 24); g.textAlign = Math.abs(p[0] - cx) < 10 ? 'center' : p[0] > cx ? 'left' : 'right'; g.fillText(d.n, p[0], p[1] + 6); }); g.textAlign = 'left';
     return c;
   }
   function openCard() {
     let name = getName();
-    const render = () => { const c = drawCard(name); const url = c.toDataURL('image/png'); const m = modal('<h2>Ma carte de profil</h2><img class="card-img" alt="Carte de profil" src="' + url + '"><div class="hstack"><label for="nm" class="fine">Nom affiché</label><input id="nm" class="search" style="max-width:240px" value="' + esc(name) + '" placeholder="Consultant Keyrus"><a class="btn b-primary" id="dl" href="' + url + '" download="carte-lakehouse-dojo.png">Télécharger l\'image</a><button data-close>Fermer</button></div><p class="fine">L\'image se construit dans ton navigateur : rien n\'est envoyé nulle part.</p>'); const inp = m.querySelector('#nm'); inp.onchange = () => { name = inp.value.trim(); setName(name); render(); }; };
+    const render = () => { const c = drawCard(name); const url = c.toDataURL('image/png'); const m = modal('<h2>🪪 Mon Certificat & Carte de Profil Keyrus</h2><img class="card-img" alt="Carte de profil" src="' + url + '"><div class="hstack"><label for="nm" class="fine">Nom affiché</label><input id="nm" class="search" style="max-width:240px" value="' + esc(name) + '" placeholder="Consultant Keyrus"><a class="btn b-primary" id="dl" href="' + url + '" download="certificat-lakehouse-dojo.png">⬇ Télécharger en PNG HD</a><button data-close>Fermer</button></div><p class="fine">Prêt à partager sur Teams ou LinkedIn. Généré à 100 % dans ton navigateur.</p>'); const inp = m.querySelector('#nm'); inp.onchange = () => { name = inp.value.trim(); setName(name); render(); }; };
     render();
   }
 

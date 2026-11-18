@@ -76,27 +76,77 @@
     pushScore();
   }
 
-  /* ---------- rail ---------- */
+  /* ---------- rail & topbar ---------- */
+  const RANKS = ['Initié du Lac', 'Artisan Bronze', 'Ingénieur Silver', 'Architecte Gold', 'Chirurgien Catalyst', 'Maître Delta', 'Grand Maître Lakehouse'];
+  const ICONS = {
+    '': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9.5z"/></svg>',
+    parcours: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
+    atelier: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+    labo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
+    examen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>',
+    quiz: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
+    cartes: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>',
+    labs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>',
+    memo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>'
+  };
   const TABS = [['', 'Accueil'], ['parcours', 'Parcours'], ['atelier', 'Simulateurs'], ['labo', 'Académie Code'], ['examen', 'Examen blanc'], ['quiz', 'Quiz'], ['cartes', 'Flashcards'], ['labs', 'Labs Databricks'], ['memo', 'Mémo & Playbooks']];
   const ctx = {
     get S() { return S; }, save, confetti, reward, toast, profile,
     replaceS(s) { S = Object.assign(blank(), s); prev = { xp: xp(), belt: beltIdx(xp()), seals: earned() }; save(); render(); }
   };
+  function trinityScores() {
+    const pyDone = ['p1', 'p2', 'p3', 'p4'].filter(labDone).length + proofs(mod('m4')).filter(Boolean).length;
+    const pyPct = Math.round(100 * pyDone / 8);
+    const spDone = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10'].filter(labDone).length + proofs(mod('m5')).filter(Boolean).length + (S.sims.sparkui ? 1 : 0);
+    const spPct = Math.round(100 * spDone / 15);
+    const dbMods = ['m1', 'm2', 'm3', 'm6', 'm7', 'm8', 'm9', 'm10', 'm11'];
+    const dbDone = dbMods.reduce((s, id) => s + proofs(mod(id)).filter(Boolean).length, 0) + ['m0', 'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9'].filter(labDone).length;
+    const dbPct = Math.round(100 * dbDone / (dbMods.length * 4 + 10));
+    return { py: pyPct, sp: spPct, db: dbPct };
+  }
   function profile() {
     const v = xp(), b = beltIdx(v), score = ms => ms.reduce((t, id) => t + proofs(mod(id)).filter(Boolean).length, 0) / (ms.length * 4);
-    return { xp: v, belt: { name: BELTS[b][1], color: BELTS[b][2] }, seals: SEALS.filter(s => s[3]()).map(s => ({ l: s[0], name: s[1] })), missions: Object.keys((S.lab && S.lab.done) || {}).length, sims: cnt(S.sims), domains: DOMAINS.map(d => ({ n: d[0], score: score(d[1]) })) };
+    return { xp: v, belt: { name: BELTS[b][1], color: BELTS[b][2] }, rank: RANKS[b], trinity: trinityScores(), seals: SEALS.filter(s => s[3]()).map(s => ({ l: s[0], name: s[1] })), missions: Object.keys((S.lab && S.lab.done) || {}).length, sims: cnt(S.sims), domains: DOMAINS.map(d => ({ n: d[0], score: score(d[1]) })) };
   }
   let tab = '';
   function rail() {
     const v = xp(), b = beltIdx(v), nx = BELTS[b + 1], lo = BELTS[b][0], due = dueCards().length;
     const trk = D.tracks[curTrack()];
-    $('rail').innerHTML = '<a class="brand" href="#accueil">Lakehouse <span>Dojo</span></a>' +
-      '<div class="me">' + beltHtml(b) + '<div><b>Ceinture ' + BELTS[b][1] + '</b> <small>' + v + ' XP</small></div>' +
-      '<div class="bar"><i style="width:' + (nx ? Math.min(100, 100 * (v - lo) / (nx[0] - lo)) : 100) + '%"></i></div>' +
-      '<small class="fine">Rythme : ' + esc(trk.label) + '</small></div>' +
-      '<div class="links">' + TABS.map(([r, l]) => '<a class="' + (tab === r ? 'on' : '') + '" href="#' + (r || 'accueil') + '">' + l +
-        (r === 'cartes' && due ? '<span class="count">' + due + '</span>' : '') + (r === 'labo' || r === 'examen' ? '<span class="count new">top</span>' : '') + '</a>').join('') + '</div>' +
-      '<div class="rail-tools"><button class="small" id="palette-btn">Rechercher <kbd>Ctrl K</kbd></button><button class="small" id="team-btn">Dojo Keyrus · Équipe</button><button class="small" id="theme-btn">Thème : ' + window.Extras.themeLabel() + '</button></div>';
+    $('rail').innerHTML =
+      '<a class="brand" href="#accueil">' +
+        '<span class="brand-logo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span>' +
+        '<span class="brand-txt"><b>Lakehouse <span>Dojo</span></b><small class="brand-sub">Keyrus · Signature</small></span>' +
+      '</a>' +
+      '<div class="me">' +
+        '<div class="hstack between"><span class="rank-badge">★ ' + RANKS[b] + '</span><small><b>' + v + ' XP</b></small></div>' +
+        beltHtml(b) +
+        '<div><b>Ceinture ' + BELTS[b][1] + '</b>' + (nx ? ' <small>· J-' + (nx[0] - v) + ' XP</small>' : ' <small>· Rang Max</small>') + '</div>' +
+        '<div class="bar"><i style="width:' + (nx ? Math.min(100, 100 * (v - lo) / (nx[0] - lo)) : 100) + '%"></i></div>' +
+        '<small class="fine">Parcours : <b>' + esc(trk.label) + '</b></small>' +
+      '</div>' +
+      '<div class="links">' + TABS.map(([r, l]) => '<a class="' + (tab === r ? 'on' : '') + '" href="#' + (r || 'accueil') + '"><span class="nav-l">' + ICONS[r] + '<span>' + l + '</span></span>' +
+        (r === 'cartes' && due ? '<span class="count">' + due + '</span>' : '') +
+        (r === 'atelier' ? '<span class="count soft">' + cnt(S.sims) + '/17</span>' : '') +
+        (r === 'labo' ? '<span class="count new">24 défis</span>' : '') +
+        (r === 'examen' ? '<span class="count new">certif</span>' : '') + '</a>').join('') + '</div>' +
+      '<div class="rail-tools"><button class="small" id="palette-btn"><span>🔍 Rechercher</span><kbd>Ctrl K</kbd></button><button class="small" id="team-btn"><span>🏆 Dojo Keyrus · Équipe</span></button><button class="small" id="theme-btn"><span>🌗 Thème : ' + window.Extras.themeLabel() + '</span></button></div>';
+    topbar();
+  }
+  function topbar() {
+    const tb = $('topbar'); if (!tb) return;
+    const tri = trinityScores();
+    const isFocus = document.body.classList.contains('focus-mode');
+    tb.innerHTML =
+      '<button class="cmd-trigger" id="top-search" aria-label="Rechercher dans le Dojo">' +
+        '<span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Chercher un module, un pattern PySpark, un playbook…</span>' +
+        '<kbd>Ctrl K</kbd>' +
+      '</button>' +
+      '<div class="skill-pills">' +
+        '<a class="sk-pill py" href="#labo-p1" title="Maîtrise Python pour la Data (École P1–P4 + Module 4)"><i></i>🐍 Python <b>' + tri.py + '%</b></a>' +
+        '<a class="sk-pill sp" href="#labo-s1" title="Maîtrise Spark & PySpark (École S1–S10 + Module 5)"><i></i>⚡ Spark <b>' + tri.sp + '%</b></a>' +
+        '<a class="sk-pill db" href="#parcours" title="Maîtrise Plateforme Databricks & Delta Lake"><i></i>🧱 Databricks <b>' + tri.db + '%</b></a>' +
+        '<button class="small" id="focus-btn" title="Basculer le mode plein écran sans barre latérale">' + (isFocus ? '⤡ Quitter Focus' : '⤢ Mode Focus') + '</button>' +
+      '</div>';
   }
 
   /* ---------- sélecteur de parcours sur-mesure ---------- */
@@ -127,9 +177,10 @@
       [0.25, 0.5, 0.75, 1].map(k => '<polygon points="' + poly(R * k) + '" fill="none" stroke="var(--line)" stroke-width="1"/>').join('') +
       DOMAINS.map((_, i) => { const p = pt(i, R); return '<line x1="0" y1="0" x2="' + p[0].toFixed(1) + '" y2="' + p[1].toFixed(1) + '" stroke="var(--line)" stroke-width="1"/>'; }).join('') +
       (peerVal ? '<polygon points="' + peerVal + '" fill="var(--gold)" fill-opacity=".22" stroke="var(--gold)" stroke-width="2" stroke-dasharray="4 3"/>' : '') +
-      '<polygon points="' + val + '" fill="var(--lake)" fill-opacity=".28" stroke="var(--lake)" stroke-width="2"/>' +
-      DOMAINS.map((d, i) => { const p = pt(i, R + 12); return '<text x="' + p[0].toFixed(1) + '" y="' + (p[1] + 3).toFixed(1) + '" text-anchor="' + (Math.abs(p[0]) < 8 ? 'middle' : p[0] > 0 ? 'start' : 'end') + '">' + d[0] + '</text>'; }).join('') + '</svg>' +
-      (peer ? '<div class="fine"><span style="color:var(--lake)">■ Toi</span> · <span style="color:var(--gold)">▨ ' + esc(peer.n) + '</span> <button class="col" id="clear-peer">(masquer)</button></div>' : '') + '</div>';
+      '<polygon points="' + val + '" fill="var(--lake)" fill-opacity=".3" stroke="var(--lake)" stroke-width="2.2"/>' +
+      DOMAINS.map((d, i) => { const p = pt(i, Math.max(4, R * score(d[1]))); return '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="3.2" fill="var(--lake)"/>'; }).join('') +
+      DOMAINS.map((d, i) => { const p = pt(i, R + 13); return '<text x="' + p[0].toFixed(1) + '" y="' + (p[1] + 3).toFixed(1) + '" text-anchor="' + (Math.abs(p[0]) < 8 ? 'middle' : p[0] > 0 ? 'start' : 'end') + '">' + d[0] + '</text>'; }).join('') + '</svg>' +
+      (peer ? '<div class="fine"><span style="color:var(--lake)">■ Toi</span> · <span style="color:var(--gold)">▨ ' + esc(peer.n) + '</span> <button class="col" id="clear-peer">(masquer)</button></div>' : '<span class="fine">Constellation des 7 domaines Lakehouse</span>') + '</div>';
   }
   function localBoardHtml() {
     const peers = S.peers || [], meName = (window.Extras && window.Extras.getName()) || 'Toi (Keyrus)';
@@ -137,7 +188,7 @@
     const all = [{ me: true, n: meName, xp: myP.xp, s: myP.seals.length, m: myP.missions, sm: myP.sims, tr: curTrack() }]
       .concat(peers.map((p, idx) => ({ me: false, idx, ...p })))
       .sort((a, b) => b.xp - a.xp);
-    return '<section class="panel"><div class="hstack between"><div><h2>Dojo d\'équipe Keyrus</h2><p class="muted">Envoie ton lien magique 1-clic dans Teams ou compare ton radar avec celui de tes collègues.</p></div>' +
+    return '<section class="panel"><div class="hstack between"><div><span class="eyebrow">Intelligence collective</span><h2>Dojo d\'équipe Keyrus</h2><p class="muted">Envoie ton lien magique 1-clic dans Teams ou compare ton radar avec celui de tes collègues.</p></div>' +
       '<div class="hstack"><button id="magic-link-btn" class="b-primary">🔗 Copier mon lien magique (1-clic)</button><button id="team-open">Gérer / Importer</button></div></div>' +
       '<div class="lb">' + all.map((r, i) => {
         const b = beltIdx(r.xp), trLabel = (D.tracks[r.tr || 'all'] || D.tracks.all).label;
@@ -153,36 +204,68 @@
     const v = xp(), b = beltIdx(v), nx = BELTS[b + 1], tk = curTrack(), trk = D.tracks[tk];
     const nextInTrack = trk.mods.map(mod).find(m => m && proofs(m).includes(false));
     const next = nextInTrack || D.modules.find(m => proofs(m).includes(false));
+    const tri = trinityScores();
+    const totProofs = D.modules.reduce((s, m) => s + proofs(m).filter(Boolean).length, 0);
+    const bestExam = S.exam && S.exam.best ? Math.round(S.exam.best * 100) + ' %' : 'À tenter';
     return '<section class="panel hero"><div class="head" style="gap:14px">' +
-      '<span class="eyebrow">Keyrus · Databricks Lakehouse Dojo</span><h1>Maîtrise Python, Spark & Databricks, à ton rythme</h1>' +
-      '<p class="lead">Onze modules, dix-sept simulateurs interactifs, une Académie de code en 3 étages (École Python Data, École Spark & PySpark, Pipeline Banque Lanterne) exécutable dans ton navigateur, 8 playbooks client et un Starter Kit Asset Bundle.</p>' +
-      beltHtml(b) +
+      '<span class="eyebrow">Keyrus · Databricks Lakehouse Dojo · Édition Signature</span>' +
+      '<h1 class="grad-title">Devenez incontournable sur Python, Spark & Databricks.</h1>' +
+      '<p class="lead">Un cockpit d\'entraînement interactif sans installation : <b>11 modules</b> d\'expertise terrain, <b>17 simulateurs</b> visuels, une <b>Académie de code en 3 étages</b> (Python Data, Spark/PySpark & SQL DuckDB) et <b>8 playbooks</b> d\'architecture client.</p>' +
+      '<div class="hstack" style="gap:16px">' + beltHtml(b) + '<span class="rank-badge">★ ' + RANKS[b] + '</span></div>' +
       '<div class="xp">' + v + ' <small>XP · ceinture ' + BELTS[b][1] + (nx ? ' · encore ' + (nx[0] - v) + ' XP avant la ceinture ' + nx[1] : '') + '</small></div>' +
-      '<div class="hstack">' + (next ? '<a class="btn b-primary" href="#module-' + next.id + '">' + (v ? 'Continuer (' + esc(trk.label) + ') : ' : 'Commencer : ') + esc(next.title) + '</a>' : '') +
-      '<a class="btn" href="#labo-p1">🐍 1. École Python Data</a><a class="btn" href="#labo-s1">⚡ 2. École Spark</a><a class="btn" href="#labo-m0">🏦 3. Pipeline Lanterne</a></div></div>' + radar() + '</section>' +
+      '<div class="hstack">' + (next ? '<a class="btn b-primary" href="#module-' + next.id + '">▶ ' + (v ? 'Reprendre : ' : 'Commencer : ') + esc(next.title) + '</a>' : '') +
+      '<a class="btn" href="#labo-p1">🐍 Académie Code (24 défis)</a><a class="btn" href="#examen">🎓 Examen blanc</a></div></div>' + radar() + '</section>' +
+
+      '<div class="trinity-grid">' +
+        '<a class="tri-card py" href="#labo-p1">' +
+          '<div class="tri-top"><span class="tri-icon">🐍 Pilier 1 · Python Data</span><span class="tri-pct" style="color:var(--py)">' + tri.py + '%</span></div>' +
+          '<div><h3>Python pour le Data Engineering</h3><p>Variables, <code>f-strings</code>, listes, boucles <code>for</code> sur les métadonnées (Driver), dictionnaires, fonctions pures <code>def</code> et tests unitaires <code>assert</code>.</p></div>' +
+          '<div class="bar"><i style="width:' + tri.py + '%;background:var(--py)"></i></div>' +
+          '<span class="tri-cta">Ouvrir l\'École Python (P1–P4) →</span>' +
+        '</a>' +
+        '<a class="tri-card sp" href="#labo-s1">' +
+          '<div class="tri-top"><span class="tri-icon">⚡ Pilier 2 · Spark & PySpark</span><span class="tri-pct" style="color:var(--spark)">' + tri.sp + '%</span></div>' +
+          '<div><h3>Apache Spark & API DataFrame</h3><p>Lazy evaluation, Shuffle, <code>.select</code>, <code>.withColumn</code>, <code>F.when</code>, <code>F.coalesce</code>, dates, <code>Window.partitionBy</code>, <code>Broadcast</code> & Spark UI.</p></div>' +
+          '<div class="bar"><i style="width:' + tri.sp + '%;background:var(--spark)"></i></div>' +
+          '<span class="tri-cta">Ouvrir l\'École Spark (S1–S10) →</span>' +
+        '</a>' +
+        '<a class="tri-card db" href="#parcours">' +
+          '<div class="tri-top"><span class="tri-icon">🧱 Pilier 3 · Databricks & Delta</span><span class="tri-pct" style="color:var(--lake)">' + tri.db + '%</span></div>' +
+          '<div><h3>Architecture Lakehouse & Prod</h3><p>Unity Catalog, Delta Lake (<code>MERGE</code>, Liquid Clustering, Time Travel), Auto Loader, Lakeflow DLT, DBSQL, FinOps & Asset Bundles CI/CD.</p></div>' +
+          '<div class="bar"><i style="width:' + tri.db + '%"></i></div>' +
+          '<span class="tri-cta">Explorer les 11 Modules & Banque Lanterne →</span>' +
+        '</a>' +
+      '</div>' +
+
+      '<div class="kpi-strip">' +
+        '<a class="kpi-box" href="#parcours"><span class="fine">Preuves des 11 modules</span><b>' + totProofs + ' / 44</b><small>Leçon · Sim · Lab · Quiz</small></a>' +
+        '<a class="kpi-box" href="#atelier"><span class="fine">Simulateurs interactifs</span><b>' + cnt(S.sims) + ' / ' + SIMS.length + '</b><small>Architecture, Delta, Spark UI, Stacktraces</small></a>' +
+        '<a class="kpi-box" href="#labo"><span class="fine">Académie de Code</span><b>' + Object.keys((S.lab && S.lab.done) || {}).length + ' / 24</b><small>4 Python · 10 Spark · 10 Lanterne</small></a>' +
+        '<a class="kpi-box" href="#examen"><span class="fine">Certification Associate</span><b>' + bestExam + '</b><small>Banque de 117 questions de scénario</small></a>' +
+      '</div>' +
 
       trackBar() +
 
-      '<section class="panel"><div class="hstack between"><h2>Le chemin</h2><span class="muted">Chaque anneau se remplit avec la leçon, le simulateur, le lab et le quiz. Les modules de ton parcours sont surlignés.</span></div><div class="journey">' +
+      '<section class="panel"><div class="hstack between"><div><span class="eyebrow">Progression modulaire</span><h2>Le chemin du Lakehouse</h2></div><span class="muted">Chaque médaillon affiche tes 4 preuves (Leçon, Simulateur, Lab, Quiz).</span></div><div class="journey">' +
       D.modules.map(m => {
-        const inTrk = trk.mods.includes(m.id);
-        return '<a class="stop' + (inTrk ? '' : ' dim') + '" href="#module-' + m.id + '"><span class="ring" style="--p:' + proofs(m).filter(Boolean).length * 25 + '"><b>' + num(m) + '</b></span>' + esc(m.title) + '</a>';
+        const inTrk = trk.mods.includes(m.id), pf = proofs(m);
+        return '<a class="stop' + (inTrk ? '' : ' dim') + '" href="#module-' + m.id + '"><span class="ring" style="--p:' + pf.filter(Boolean).length * 25 + '"><b>' + (pf.every(Boolean) ? '✓' : num(m)) + '</b></span><span>' + esc(m.title) + '</span><span class="mini-pips">' + pf.map(ok => '<i class="' + (ok ? 'on' : '') + '"></i>').join('') + '</span></a>';
       }).join('') + '</div></section>' +
 
       localBoardHtml() +
 
       '<section class="panel" id="board" hidden><div class="hstack between"><h2>Classement en direct</h2><span id="board-act"></span></div><div class="lb" id="board-body"></div></section>' +
 
-      '<section class="panel"><h2>Sceaux (' + earned().length + ' / ' + SEALS.length + ')</h2><div class="seals">' + SEALS.map(s => '<div class="seal' + (s[3]() ? '' : ' off') + '"><i>' + s[0] + '</i><span><b>' + s[1] + '</b><small>' + s[2] + '</small></span></div>').join('') + '</div></section>' +
+      '<section class="panel"><div class="hstack between"><div><span class="eyebrow">Trophées & Maîtrise</span><h2>Sceaux débloqués (' + earned().length + ' / ' + SEALS.length + ')</h2></div></div><div class="seals">' + SEALS.map(s => '<div class="seal' + (s[3]() ? '' : ' off') + '"><i>' + s[0] + '</i><span><b>' + s[1] + '</b><small>' + s[2] + '</small></span></div>').join('') + '</div></section>' +
 
-      '<section class="panel"><h2>Plan sur quatre semaines</h2><div class="scroll"><table class="plain"><tr><th>Quand</th><th>Objectif</th><th>Modules</th></tr>' +
-      D.plan.map(s => '<tr><td><b>' + s.when + '</b></td><td>' + s.what + '</td><td>' + s.mods.map(id => '<a href="#module-' + id + '">' + num(mod(id)) + '</a>').join(' · ') + '</td></tr>').join('') + '</table></div></section>' +
+      '<section class="panel"><h2>Plan d\'attaque sur quatre semaines</h2><div class="scroll"><table class="plain"><tr><th>Quand</th><th>Objectif opérationnel</th><th>Modules</th></tr>' +
+      D.plan.map(s => '<tr><td><b>' + s.when + '</b></td><td>' + s.what + '</td><td>' + s.mods.map(id => '<a href="#module-' + id + '">M' + num(mod(id)) + '</a>').join(' · ') + '</td></tr>').join('') + '</table></div></section>' +
 
-      '<section class="panel"><div class="hstack between"><div class="head"><h2>Projet fil rouge</h2><p class="muted">Un pipeline complet que tu peux montrer et expliquer en entretien ou avant-vente : c\'est lui qui te rend crédible.</p></div>' +
+      '<section class="panel"><div class="hstack between"><div class="head"><span class="eyebrow">Livrable d\'ingénierie</span><h2>Projet fil rouge industrialisé</h2><p class="muted">Un pipeline complet que tu peux montrer et expliquer en entretien ou avant-vente : c\'est lui qui te rend crédible.</p></div>' +
       '<button id="bundle-btn" class="b-primary">🧰 Générer le Starter Kit Asset Bundle</button></div>' +
       D.projet.map((t, i) => '<label class="chk"><input type="checkbox" id="pj' + i + '" data-projet="' + i + '"' + (S.projet[i] ? ' checked' : '') + '><span>' + t + '</span></label>').join('') + '</section>' +
 
-      '<div class="hstack"><button id="card-btn" class="b-primary">Ma carte de profil</button><button id="save-btn">Sauvegarder ma progression</button><button id="load-btn">Restaurer</button><input type="file" id="load-file" accept="application/json,.json" hidden><button id="export">Copier mes notes</button><button id="reset">Réinitialiser ma progression</button></div><div id="export-out"></div>';
+      '<div class="hstack"><button id="card-btn" class="b-primary">🪪 Générer mon Certificat / Carte PNG</button><button id="save-btn">⬇ Sauvegarder ma progression</button><button id="load-btn">⬆ Restaurer</button><input type="file" id="load-file" accept="application/json,.json" hidden><button id="export">📋 Copier mes notes</button><button id="reset">Réinitialiser</button></div><div id="export-out"></div>';
   }
 
   /* ---------- parcours et module ---------- */
@@ -202,25 +285,30 @@
     });
     return html + '</div>';
   }
-  const simFrame = s => '<section class="simframe"><header><span class="eyebrow">Simulateur</span><h2>' + esc(s.title) + '</h2><p class="muted">' + esc(s.tag) + '</p>' +
-    '<span class="mission' + (S.sims[s.id] ? ' done' : '') + '" data-mission="' + s.id + '">' + (S.sims[s.id] ? 'Mission réussie · ' : 'Mission · ') + esc(s.mission) + '</span></header><div class="sim" data-sim="' + s.id + '"></div></section>';
-  const codeBlock = (c, key) => '<div class="codehead"><span>' + esc(c.t) + '</span><button data-copy="' + key + '">Copier</button></div><pre id="code' + key + '">' + esc(c.c) + '</pre>';
+  const simFrame = s => '<section class="simframe"><header><span class="eyebrow">Simulateur interactif</span><h2>' + esc(s.title) + '</h2><p class="muted">' + esc(s.tag) + '</p>' +
+    '<span class="mission' + (S.sims[s.id] ? ' done' : '') + '" data-mission="' + s.id + '">' + (S.sims[s.id] ? '✓ Mission réussie · ' : '🎯 Mission · ') + esc(s.mission) + '</span></header><div class="sim" data-sim="' + s.id + '"></div></section>';
+  const codeBlock = (c, key) => '<div class="code-win"><div class="codehead"><span><span class="win-dots"><i></i><i></i><i></i></span><b>' + esc(c.t) + '</b></span><button data-copy="' + key + '">Copier</button></div><pre id="code' + key + '">' + esc(c.c) + '</pre></div>';
   function moduleView(id) {
     const m = mod(id); if (!m) return parcours();
-    const i = D.modules.indexOf(m), pv = D.modules[i - 1], nx = D.modules[i + 1];
-    return '<div class="head"><p class="crumb"><a href="#parcours">Parcours</a> / ' + PARTS[m.day] + ' / module ' + (i + 1) + '</p><h1>' + esc(m.title) + '</h1><p class="muted">' + esc(m.sub) + '</p></div>' +
+    const i = D.modules.indexOf(m), pv = D.modules[i - 1], nx = D.modules[i + 1], pf = proofs(m);
+    return '<div class="head"><p class="crumb"><a href="#parcours">Parcours</a> / ' + PARTS[m.day] + ' / module ' + (i + 1) + '</p><h1 class="grad-title">' + esc(m.title) + '</h1><p class="muted">' + esc(m.sub) + '</p></div>' +
+      '<div class="proof-bar">' +
+        [['Leçon comprise', pf[0]], ['Simulateur validé', pf[1]], ['Lab réalisé', pf[2]], ['Quiz >= 80 %', pf[3]]].map(([lbl, ok], idx) =>
+          '<div class="proof-step' + (ok ? ' done' : '') + '"><b>' + (ok ? '✓' : idx + 1) + '</b><span>' + lbl + '</span></div>'
+        ).join('') +
+      '</div>' +
       simsOf(m).map(simFrame).join('') +
-      '<section class="panel"><h2>L\'essentiel</h2><ul class="pts">' + m.points.map(p => '<li>' + p + '</li>').join('') + '</ul></section>' +
-      (m.code.length ? '<section class="panel"><h2>Code à connaître</h2>' + m.code.map((c, k) => codeBlock(c, k)).join('') + '</section>' : '') +
-      '<section class="panel"><h2>Pièges</h2><ul class="traps">' + m.traps.map(t => '<li>' + t + '</li>').join('') + '</ul></section>' +
-      '<section class="panel"><div class="head"><h2>Questions d\'architecture & Retours de formation</h2><p class="muted">Les vraies questions posées en formation et en mission chez nos clients : déplie chaque point pour lire la synthèse et le réflexe consultant Keyrus.</p></div>' +
+      '<section class="panel"><span class="eyebrow">Concepts clés</span><h2>L\'essentiel à maîtriser</h2><ul class="pts">' + m.points.map(p => '<li>' + p + '</li>').join('') + '</ul></section>' +
+      (m.code.length ? '<section class="panel"><span class="eyebrow">Syntaxe de référence</span><h2>Code à connaître</h2>' + m.code.map((c, k) => codeBlock(c, k)).join('') + '</section>' : '') +
+      '<section class="panel"><span class="eyebrow">Anti-patterns</span><h2>Pièges à éviter en mission</h2><ul class="traps">' + m.traps.map(t => '<li>' + t + '</li>').join('') + '</ul></section>' +
+      '<section class="panel"><div class="head"><span class="eyebrow">Expérience Conseil</span><h2>Questions d\'architecture & Retours de formation</h2><p class="muted">Les vraies questions posées en formation et en mission chez nos clients : déplie chaque point pour lire la synthèse et le réflexe consultant Keyrus.</p></div>' +
       m.ask.map((q, k) => '<div class="ask-item"><label class="chk"><input type="checkbox" id="ask' + k + '" data-ask="' + m.id + '-' + k + '"' + (S.asked[m.id + '-' + k] ? ' checked' : '') + '><span><b>' + q + '</b></span></label>' +
         (m.answers && m.answers[k] ? '<details class="ans-box"><summary>💡 Voir la réponse terrain & le réflexe Keyrus</summary><div class="expl" style="margin-top:6px">' + m.answers[k] + '</div></details>' : '') + '</div>').join('') + '</section>' +
-      '<section class="panel"><div class="hstack between"><h2>Lab · ' + esc(m.lab.title) + '</h2><span class="pill">' + m.lab.time + ' dans Databricks</span></div><ol class="pts">' + m.lab.steps.map(s => '<li>' + s + '</li>').join('') + '</ol>' +
-      '<details><summary>Voir la solution</summary>' + codeBlock({ t: 'Solution du lab', c: m.lab.sol }, 'sol') + '</details>' +
+      '<section class="panel"><div class="hstack between"><div><span class="eyebrow">Travaux Pratiques</span><h2>Lab · ' + esc(m.lab.title) + '</h2></div><span class="pill">' + m.lab.time + ' dans Databricks</span></div><ol class="pts">' + m.lab.steps.map(s => '<li>' + s + '</li>').join('') + '</ol>' +
+      '<details><summary>Voir la solution de référence</summary>' + codeBlock({ t: 'Solution du lab', c: m.lab.sol }, 'sol') + '</details>' +
       '<div class="hstack"><button data-lab="' + m.id + '" class="' + (S.labs[m.id] ? 'b-done' : '') + '">' + (S.labs[m.id] ? '✓ Lab réalisé' : 'J\'ai réalisé ce lab') + '</button>' +
       '<button data-nb="' + m.id + '">⬇ Exporter ce lab en Notebook (.ipynb)</button></div></section>' +
-      '<section class="panel"><h2>Mes notes</h2><textarea id="note" data-note="' + m.id + '" placeholder="Ce que j\'ai compris, ce qui reste flou, comment on l\'applique sur mon projet…">' + esc(S.notes[m.id] || '') + '</textarea></section>' +
+      '<section class="panel"><h2>Mes notes personnelles</h2><textarea id="note" data-note="' + m.id + '" placeholder="Ce que j\'ai compris, ce qui reste flou, comment on l\'applique sur mon projet…">' + esc(S.notes[m.id] || '') + '</textarea></section>' +
       '<div class="hstack"><a class="btn b-primary" href="#quiz-' + m.id + '">Passer le quiz (' + m.quiz.length + ' questions)</a>' +
       '<button data-done="' + m.id + '" class="' + (S.done[m.id] ? 'b-done' : '') + '">' + (S.done[m.id] ? '✓ Leçon comprise' : 'J\'ai compris la leçon') + '</button>' +
       (pv ? '<a class="btn" href="#module-' + pv.id + '">← ' + esc(pv.title) + '</a>' : '') + (nx ? '<a class="btn" href="#module-' + nx.id + '">' + esc(nx.title) + ' →</a>' : '') + '</div>';
@@ -451,7 +539,8 @@
     if (e.target.closest('.sim, .lab')) return;
     const t = e.target.closest('button'); if (!t) return;
     const d = t.dataset;
-    if (t.id === 'palette-btn') { window.Extras.openPalette(); return; }
+    if (t.id === 'palette-btn' || t.id === 'top-search') { window.Extras.openPalette(); return; }
+    if (t.id === 'focus-btn') { document.body.classList.toggle('focus-mode'); topbar(); return; }
     if (t.id === 'bundle-btn') { window.Extras.openBundleModal(); return; }
     if (t.id === 'magic-link-btn') { copyText(window.Extras.myMagicLink(), t, '🔗 Copier mon lien magique (1-clic)'); toast('Lien magique copié : colle-le dans Teams !'); return; }
     if (t.id === 'team-btn' || t.id === 'team-open') { window.Extras.openTeamModal(() => render()); return; }

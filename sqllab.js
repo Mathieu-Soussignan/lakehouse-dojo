@@ -1311,9 +1311,30 @@
     const eyebrow = cur.group === 'python' ? '🐍 Étage 1 · École Python pour la Data (Driver & Ingénierie)'
       : cur.group === 'spark' ? '⚡ Étage 2 · École Spark & PySpark (De Zéro à Avancé)'
       : '🏦 Étage 3 · Projet Réel : Pipeline Banque Lanterne (Mission ' + bankMs.indexOf(cur) + ')';
+    const pyDoneCnt = pyMs.filter(m => LS.done[m.id] != null).length;
+    const spDoneCnt = sparkMs.filter(m => LS.done[m.id] != null).length;
+    const bkDoneCnt = bankMs.filter(m => LS.done[m.id] != null).length;
+    const fileLabel = (cur.group === 'python' ? 'etage1_python_' : cur.group === 'spark' ? 'etage2_spark_' : 'banque_lanterne_') + cur.id + (lang === 'py' ? '.py' : '.sql');
     root.innerHTML =
-      '<div class="head"><p class="crumb"><a href="#accueil">Accueil</a> / Académie Python, Spark & SQL</p><h1>Académie Pratique : Python Data · PySpark · Pipeline Lakehouse</h1>' +
-      '<p class="muted">Trois étages exécutables directement dans ton navigateur : <b>1) École Python Data (P1–P4)</b> pour maîtriser variables, boucles, dictionnaires, fonctions pures et tests <code>assert</code>, <b>2) École Spark & PySpark (S1–S10)</b> de <code>.select()</code> jusqu\'aux <code>Window</code> et Regex, et <b>3) Pipeline Banque Lanterne (M0–M9)</b>. <span class="pill">' + earned + ' / ' + total + ' XP</span></p></div>' +
+      '<div class="head"><p class="crumb"><a href="#accueil">Accueil</a> / Académie Python, Spark & SQL</p><h1 class="grad-title">Académie de Code : Python Data · PySpark · Pipeline Lakehouse</h1>' +
+      '<p class="muted">Trois étages exécutables directement dans ton navigateur : <b>1) École Python Data (P1–P4)</b>, <b>2) École Spark & PySpark (S1–S10)</b>, et <b>3) Pipeline Banque Lanterne (M0–M9)</b>. <span class="pill">' + earned + ' / ' + total + ' XP</span></p></div>' +
+      '<div class="stage-tabs">' +
+        '<a class="st-card' + (cur.group === 'python' ? ' on' : '') + '" href="#labo-' + (pyMs.find(m => LS.done[m.id] == null) || pyMs[0]).id + '" style="text-decoration:none;color:inherit">' +
+          '<b><span>🐍 1. École Python Data</span><span class="pill">' + pyDoneCnt + ' / ' + pyMs.length + '</span></b>' +
+          '<small class="fine">f-strings, boucles métadonnées, dict, def & assert</small>' +
+          '<div class="bar"><i style="width:' + Math.round(100 * pyDoneCnt / pyMs.length) + '%;background:var(--py)"></i></div>' +
+        '</a>' +
+        '<a class="st-card' + (cur.group === 'spark' ? ' on' : '') + '" href="#labo-' + (sparkMs.find(m => LS.done[m.id] == null) || sparkMs[0]).id + '" style="text-decoration:none;color:inherit">' +
+          '<b><span>⚡ 2. École Spark & PySpark</span><span class="pill">' + spDoneCnt + ' / ' + sparkMs.length + '</span></b>' +
+          '<small class="fine">DataFrame API, Nulls, Dates, Window & Broadcast</small>' +
+          '<div class="bar"><i style="width:' + Math.round(100 * spDoneCnt / sparkMs.length) + '%;background:var(--spark)"></i></div>' +
+        '</a>' +
+        '<a class="st-card' + (!cur.group ? ' on' : '') + '" href="#labo-' + (bankMs.find(m => LS.done[m.id] == null) || bankMs[0]).id + '" style="text-decoration:none;color:inherit">' +
+          '<b><span>🏦 3. Pipeline Banque Lanterne</span><span class="pill">' + bkDoneCnt + ' / ' + bankMs.length + '</span></b>' +
+          '<small class="fine">Audit Bronze, Silver/Rejets, Gold, MERGE & Alerte</small>' +
+          '<div class="bar"><i style="width:' + Math.round(100 * bkDoneCnt / bankMs.length) + '%"></i></div>' +
+        '</a>' +
+      '</div>' +
       '<div class="lab">' +
         '<aside class="lab-side panel">' +
         '<h3>🐍 1. École Python Data</h3><ol class="mlist">' + pyMs.map((m, i) => renderItem(m, 'P' + (i + 1))).join('') + '</ol>' +
@@ -1328,23 +1349,34 @@
           '<section class="panel">' +
           '<div class="hstack between"><div class="seg"><button data-lang="py" class="' + (lang === 'py' ? 'on' : '') + '">🐍 Mode Python & PySpark (DataFrame + def/for/assert)</button><button data-lang="sql" class="' + (lang === 'sql' ? 'on' : '') + '">Mode SQL (Databricks SQL)</button></div>' +
           '<span class="fine" id="lang-tag">' + (lang === 'py' ? 'Interpréteur Python Data + Compilateur Catalyst → DuckDB' : 'Syntaxe SQL standard + extensions Databricks (EXCEPT, QUALIFY, MERGE)') + '</span></div>' +
-          '<div class="editor"><pre class="hl" id="hl" aria-hidden="true"></pre><textarea id="sql" spellcheck="false" aria-label="Éditeur de code" autocapitalize="off"></textarea></div>' +
-          '<div class="hstack"><button id="run" class="b-primary" disabled>▶ Exécuter <kbd>Ctrl</kbd>+<kbd>↵</kbd></button><button id="validate" disabled>✔ Valider la mission</button><button id="hint">💡 Indice <span id="hint-n"></span></button><button id="starter" class="small">Remettre le point de départ</button></div><div id="hint-box"></div></section>' +
+          '<div class="ide-shell">' +
+            '<div class="ide-bar">' +
+              '<div class="hstack" style="gap:8px"><span class="win-dots"><i></i><i></i><i></i></span><span class="ide-tab" id="ide-file">' + esc(fileLabel) + '</span></div>' +
+              '<span class="ide-status">Notebook Kernel · DuckDB-WASM + Catalyst AST</span>' +
+            '</div>' +
+            '<div class="editor"><pre class="line-nums" id="lnums" aria-hidden="true">1</pre><div class="editor-canvas"><pre class="hl" id="hl" aria-hidden="true"></pre><textarea id="sql" spellcheck="false" aria-label="Éditeur de code" autocapitalize="off"></textarea></div></div>' +
+          '</div>' +
+          '<div class="hstack"><button id="run" class="b-primary" disabled>▶ Exécuter la cellule <kbd>Ctrl</kbd>+<kbd>↵</kbd></button><button id="validate" disabled>✔ Valider la mission</button><button id="hint">💡 Indice <span id="hint-n"></span></button><button id="starter" class="small">↺ Code initial</button></div><div id="hint-box"></div></section>' +
           '<section class="panel" id="result"><div id="boot" class="boot"><span class="spin"></span><span id="boot-msg">Démarrage du moteur…</span></div></section>' +
           '<section class="panel" id="verdict" hidden></section>' +
         '</div></div>';
 
-    const ta = $(root, '#sql'), pre = $(root, '#hl'), res = $(root, '#result'), ver = $(root, '#verdict');
+    const ta = $(root, '#sql'), pre = $(root, '#hl'), lnums = $(root, '#lnums'), res = $(root, '#result'), ver = $(root, '#verdict');
     const getStarter = () => lang === 'py' ? (cur.pyStarter || cur.py) : cur.starter;
     const getDraft = () => lang === 'py' ? (LS.pyDrafts[cur.id] != null ? LS.pyDrafts[cur.id] : getStarter()) : (LS.drafts[cur.id] != null ? LS.drafts[cur.id] : getStarter());
     ta.value = getDraft();
-    const paint = () => { pre.innerHTML = hl(ta.value, lang); pre.scrollTop = ta.scrollTop; pre.scrollLeft = ta.scrollLeft; };
+    const paint = () => {
+      pre.innerHTML = hl(ta.value, lang);
+      const lineCount = Math.max(1, ta.value.split('\n').length);
+      lnums.textContent = Array.from({ length: lineCount }, (_, i) => i + 1).join('\n');
+      pre.scrollTop = ta.scrollTop; pre.scrollLeft = ta.scrollLeft; lnums.scrollTop = ta.scrollTop;
+    };
     ta.addEventListener('input', () => {
       paint();
       if (lang === 'py') LS.pyDrafts[cur.id] = ta.value; else LS.drafts[cur.id] = ta.value;
       ctx.save();
     });
-    ta.addEventListener('scroll', () => { pre.scrollTop = ta.scrollTop; pre.scrollLeft = ta.scrollLeft; });
+    ta.addEventListener('scroll', () => { pre.scrollTop = ta.scrollTop; pre.scrollLeft = ta.scrollLeft; lnums.scrollTop = ta.scrollTop; });
     ta.addEventListener('keydown', e => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); run(); }
       else if (e.key === 'Tab') { e.preventDefault(); const s = ta.selectionStart; ta.setRangeText('    ', s, ta.selectionEnd, 'end'); ta.dispatchEvent(new Event('input')); }
@@ -1355,6 +1387,8 @@
       lang = b.dataset.lang; LS.lang = lang; ctx.save();
       root.querySelectorAll('[data-lang]').forEach(x => x.classList.toggle('on', x.dataset.lang === lang));
       $(root, '#lang-tag').textContent = lang === 'py' ? 'Interpréteur Python Data + Compilateur Catalyst → DuckDB' : 'Syntaxe SQL standard + extensions Databricks (EXCEPT, QUALIFY, MERGE)';
+      const fEl = $(root, '#ide-file');
+      if (fEl) fEl.textContent = (cur.group === 'python' ? 'etage1_python_' : cur.group === 'spark' ? 'etage2_spark_' : 'banque_lanterne_') + cur.id + (lang === 'py' ? '.py' : '.sql');
       ta.value = getDraft(); paint(); showHints();
     });
 
