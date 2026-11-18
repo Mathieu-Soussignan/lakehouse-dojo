@@ -780,5 +780,178 @@
     }
   });
 
+  /* ---------- 16. Python sur le Driver vs Spark sur les Workers (L'Anti-UDF) ---------- */
+  SIMS.push({
+    id: 'pydriver', mod: 'm4', title: 'Python sur le Driver vs Spark sur les Workers',
+    tag: 'Tu dois nettoyer 8 colonnes texte sur une table de 50 millions de lignes (32 Go). Teste les 4 approches.',
+    mission: 'Trouve l\'approche qui combine boucle Python propre (Driver) et exécution C++ Photon (Workers) en moins de 5 secondes.',
+    mount(root, win) {
+      const APPROACHES = [
+        {
+          id: 'collect', label: '1. Boucle for sur df.collect()',
+          code: '# ❌ PIÈGE MORTEL : rapatrier les 50M de lignes en Python\nrows = df.collect()  # 32 Go remontent vers le Driver !\nclean = []\nfor r in rows:\n    clean.append(r["nom"].strip().upper())',
+          driver: '💥 CRASH OutOfMemoryError (32 Go > 16 Go RAM du Driver)',
+          workers: 'Inactifs (0 % CPU) après la lecture',
+          photon: 'Désactivé', time: 'CRASH après 4 min', ok: false,
+          verdict: 'ko',
+          msg: '<code>df.collect()</code> ou <code>df.toPandas()</code> ramène toutes les partitions dans la RAM d\'une seule machine (le Driver). Au-delà de quelques centaines de Mo, le Driver explose en mémoire.'
+        },
+        {
+          id: 'udf', label: '2. UDF Python (@udf ligne à ligne)',
+          code: '# ⚠️ LENT : fonction Python appelée ligne par ligne sur chaque Worker\nfrom pyspark.sql.functions import udf\n@udf("string")\ndef clean_py(s):\n    return s.strip().upper() if s else None\n\ndf = df.withColumn("nom", clean_py("nom"))',
+          driver: 'OK (planifie le job)',
+          workers: 'Goulot CPU : sérialisation JVM ⇄ Python 50 millions de fois',
+          photon: '❌ Cassé (boîte noire Python)', time: '3 min 48 s', ok: false,
+          verdict: 'ko',
+          msg: 'Une UDF Python classique oblige chaque Worker à sortir du moteur C++/JVM pour envoyer les lignes une par une à un interpréteur Python externe. Photon ne peut plus vectoriser le calcul.'
+        },
+        {
+          id: 'copypaste', label: '3. Copier-coller 8 fois .withColumn()',
+          code: '# 😐 MARCHE MAIS SALE : code répétitif difficile à maintenir\ndf = (df\n  .withColumn("c1", F.upper(F.trim("c1")))\n  .withColumn("c2", F.upper(F.trim("c2")))\n  # ... copié-collé 8 fois à la main ...\n)',
+          driver: 'OK (construit le plan Catalyst)',
+          workers: 'Exécution distribuée rapide',
+          photon: '✓ Actif (100 % natif)', time: '2,8 s (mais dette technique)', ok: false,
+          verdict: 'warn',
+          msg: 'Les performances sont bonnes car on utilise <code>F.upper(F.trim(...))</code>, mais copier-coller 8 (ou 40) lignes viole le principe DRY : à la moindre modification de règle, tu oublieras une colonne.'
+        },
+        {
+          id: 'meta', label: '4. Fonction pure def + boucle for sur les colonnes',
+          code: '# ✅ GOD TIER : Python orchestre sur le Driver, Spark exécute sur les Workers !\nfrom pyspark.sql import functions as F\n\ndef nettoyer_colonnes(df, cols):\n    # Cette boucle tourne 8 fois sur les NOMS de colonnes (sur le Driver, en 1 ms)\n    for c in cols:\n        df = df.withColumn(c, F.upper(F.trim(F.col(c))))\n    return df\n\ncols_texte = ["nom", "prenom", "ville", "adresse", "pays", "segment", "canal", "devise"]\ndf_propre = df.transform(nettoyer_colonnes, cols_texte)',
+          driver: '✓ 1 milliseconde (boucle sur 8 noms de colonnes pour bâtir le plan)',
+          workers: '✓ 100 % distribué en parallèle sur tous les cœurs',
+          photon: '🚀 Actif (100 % vectorisé C++)', time: '2,4 secondes', ok: true,
+          verdict: 'ok',
+          msg: '<b>C\'est LA règle d\'or de Python sur Databricks :</b> utilise les boucles <code>for</code>, listes, dictionnaires et fonctions <code>def</code> de Python pour <b>construire dynamiquement le plan Catalyst sur le Driver</b>, en n\'utilisant que des fonctions natives <code>F.*</code> à l\'intérieur !'
+        }
+      ];
+      const st = { cur: 0, tested: {} };
+      const draw = () => {
+        const a = APPROACHES[st.cur];
+        root.innerHTML = `
+          <div class="seg">${APPROACHES.map((x, i) => `<button data-i="${i}" class="${i === st.cur ? 'on' : ''}">${st.tested[x.id] ? (x.ok ? '✓ ' : '✗ ') : ''}${esc(x.label)}</button>`).join('')}</div>
+          <div class="sim-cols">
+            <div>
+              <span class="zlabel">Code écrit dans le notebook</span>
+              <pre class="mini">${esc(a.code)}</pre>
+              <button class="b-primary" data-run="1">▶ Exécuter sur 50 millions de lignes (32 Go)</button>
+            </div>
+            <div>
+              <span class="zlabel">Comportement sur le cluster</span>
+              <table class="t">
+                <tr><th>Rôle du Driver (Python)</th><td>${st.tested[a.id] ? a.driver : '<span class="muted">Clique sur Exécuter…</span>'}</td></tr>
+                <tr><th>Rôle des Workers (Spark)</th><td>${st.tested[a.id] ? a.workers : '<span class="muted">—</span>'}</td></tr>
+                <tr><th>Moteur C++ Photon</th><td>${st.tested[a.id] ? a.photon : '<span class="muted">—</span>'}</td></tr>
+                <tr><th>Durée totale</th><td><b>${st.tested[a.id] ? a.time : '—'}</b></td></tr>
+              </table>
+              ${st.tested[a.id] ? `<div class="result ${a.verdict === 'ok' ? 'ok' : 'ko'}">${a.msg}</div>` : '<div class="sim-note">Lance l\'exécution pour observer où tourne Python et où tourne Spark.</div>'}
+            </div>
+          </div>`;
+      };
+      root.onclick = e => {
+        const b = e.target.closest('button'); if (!b) return;
+        if (b.dataset.i != null) { st.cur = +b.dataset.i; draw(); return; }
+        if (b.dataset.run) {
+          const a = APPROACHES[st.cur];
+          st.tested[a.id] = true;
+          if (a.ok) win();
+          draw();
+        }
+      };
+      draw();
+    }
+  });
+
+  /* ---------- 17. Clinique des Stacktraces : Déboguer Python, Spark & Databricks ---------- */
+  SIMS.push({
+    id: 'stacktrace', mod: 'm11', title: 'Clinique des Stacktraces : Déboguer la Prod',
+    tag: 'Savoir lire une erreur Python, PySpark ou Delta en 10 secondes est ce qui distingue un senior d\'un débutant.',
+    mission: 'Identifie la cause exacte et le correctif des 4 erreurs classiques de production.',
+    mount(root, win) {
+      const BUGS = [
+        {
+          id: 'callable', label: '1. TypeError: Column is not callable',
+          trace: `TypeError: 'Column' object is not callable
+---------------------------------------------------------------------------
+Cell In[14], line 5
+      1 from pyspark.sql.functions import *
+      2 col = F.col("montant")
+----> 5 df2 = df.filter(col("montant") > 0).agg(max("montant"))`,
+          opts: [
+            ['Le cluster manque de mémoire RAM', false, 'Une TypeError est une erreur purement Python déclenchée sur le Driver avant même que Spark ne lance un job.'],
+            ['Une variable Python a écrasé le nom d\'une fonction PySpark (col = ... ou import *)', true, 'Exact ! À la ligne 2, la variable <code>col</code> contient un objet <code>Column</code> : appeler <code>col("montant")</code> à la ligne 5 revient à appeler une colonne comme une fonction. De même, <code>from pyspark.sql.functions import *</code> écrase les fonctions Python natives <code>max()</code>, <code>sum()</code>, <code>min()</code>. Utilise toujours <code>from pyspark.sql import functions as F</code> !'],
+            ['La colonne montant est de type STRING', false, 'Un mauvais type de colonne ne provoque jamais <code>\'Column\' object is not callable</code>.']
+          ]
+        },
+        {
+          id: 'merge', label: '2. DELTA_MULTIPLE_SOURCE_ROW_MATCHING',
+          trace: `org.apache.spark.sql.delta.DeltaUnsupportedOperationException:
+[DELTA_MULTIPLE_SOURCE_ROW_MATCHING_TARGET_ROW_IN_MERGE]
+Cannot perform Merge as multiple source rows matched and attempted to modify the same
+target row in the Delta table in possibly conflicting ways.`,
+          opts: [
+            ['La table cible Delta est corrompue : il faut lancer VACUUM', false, 'La table cible est intacte ; c\'est la table source du MERGE qui est ambiguë.'],
+            ['Le DataFrame source contient plusieurs lignes avec la même clé de jointure ON', true, 'Exact ! Si deux lignes du lot entrant portent le même <code>transaction_id</code>, Delta refuse de deviner laquelle doit écraser la ligne cible. Il faut toujours dédoublonner la source avant le MERGE (ex. avec <code>QUALIFY row_number() OVER (PARTITION BY id ORDER BY ts DESC) = 1</code>).'],
+            ['Il manque le privilège MODIFY dans Unity Catalog', false, 'Un problème de droit lèverait <code>PermissionDeniedException</code>.']
+          ]
+        },
+        {
+          id: 'unresolved', label: '3. [UNRESOLVED_COLUMN] en PySpark',
+          trace: `AnalysisException: [UNRESOLVED_COLUMN.WITH_SUGGESTION]
+A column or function parameter with name \`CA_Mensuel\` cannot be resolved.
+Did you mean one of the following? [\`agence_id\`, \`mois\`, \`montant\`, \`devise\`]`,
+          opts: [
+            ['Tu utilises une colonne dans .filter() ou .select() avant de l\'avoir créée (ou son .alias() manque)', true, 'Exact ! Catalyst vérifie le schéma à la construction du plan : soit tu as oublié <code>.alias("CA_Mensuel")</code> dans ton <code>.agg(...)</code> en amont, soit tu n\'as pas réaffecté <code>df = df.withColumn("CA_Mensuel", ...)</code> (immuabilité du DataFrame) !'],
+            ['Le fichier Parquet a été supprimé sur ADLS', false, 'Un fichier manquant lèverait une erreur de lecture I/O, pas une erreur d\'analyse de colonne avec suggestion.'],
+            ['Le SQL Warehouse est éteint', false, 'Le message vient de l\'analyseur Catalyst : le calcul est bien allumé et te suggère même les colonnes existantes entre crochets !']
+          ]
+        },
+        {
+          id: 'andor', label: '4. ValueError: Cannot convert column into bool',
+          trace: `PySparkValueError: [CANNOT_CONVERT_COLUMN_INTO_BOOL]
+Cannot convert column into bool: please use '&' for 'and', '|' for 'or', '~' for 'not'
+when building DataFrame boolean expressions.
+----> df.filter(F.col("montant") > 0 and F.col("devise") == "EUR")`,
+          opts: [
+            ['En PySpark, il faut utiliser & / | / ~ avec des parenthèses autour de chaque comparaison', true, 'Exact ! En Python, les mots-clés <code>and</code>, <code>or</code> et <code>not</code> tentent d\'évaluer immédiatement la valeur de vérité sur le Driver. Pour construire une expression distribuée Spark, écris <code>df.filter((F.col("montant") > 0) & (F.col("devise") == "EUR"))</code>.'],
+            ['On ne peut filtrer que sur une seule colonne à la fois dans Spark', false, 'On peut combiner autant de conditions qu\'on veut avec <code>&</code> et <code>|</code>.'],
+            ['Il faut convertir la colonne en booléen avec .cast("boolean")', false, 'Le problème vient de l\'opérateur Python <code>and</code> entre les deux comparaisons.']
+          ]
+        }
+      ];
+      const st = { cur: 0, solved: {}, msg: {} };
+      const draw = () => {
+        const b = BUGS[st.cur], ok = st.solved[b.id], m = st.msg[b.id];
+        root.innerHTML = `
+          <div class="seg">${BUGS.map((x, i) => `<button data-i="${i}" class="${i === st.cur ? 'on' : ''}">${st.solved[x.id] ? '✓ ' : ''}${esc(x.label)}</button>`).join('')}</div>
+          <div class="sim-cols">
+            <div>
+              <span class="zlabel">Stacktrace affichée dans le notebook / job</span>
+              <pre class="mini" style="color:#f07e66;white-space:pre-wrap">${esc(b.trace)}</pre>
+              <span class="muted">Incidents résolus : <b>${Object.keys(st.solved).length} / 4</b></span>
+            </div>
+            <div class="ctrl">
+              <span class="zlabel">Diagnostic & correctif</span>
+              ${b.opts.map(([lbl, isOk], idx) => `<button class="opt ${ok && isOk ? 'right' : ''}" data-o="${idx}">${esc(lbl)}</button>`).join('')}
+            </div>
+          </div>
+          ${m ? `<div class="result ${ok ? 'ok' : 'ko'}"><b>${ok ? 'Bien vu !' : 'Regarde plus attentivement la stacktrace'}</b><br>${m}</div>` : '<div class="sim-note">Lis la première et la dernière ligne de la stacktrace, puis choisis la cause exacte.</div>'}`;
+      };
+      root.onclick = e => {
+        const btn = e.target.closest('button'); if (!btn) return;
+        if (btn.dataset.i != null) { st.cur = +btn.dataset.i; draw(); return; }
+        if (btn.dataset.o != null) {
+          const b = BUGS[st.cur], [_, isOk, txt] = b.opts[+btn.dataset.o];
+          st.msg[b.id] = txt;
+          if (isOk) {
+            st.solved[b.id] = true;
+            if (Object.keys(st.solved).length === BUGS.length) win();
+          }
+          draw();
+        }
+      };
+      draw();
+    }
+  });
+
   window.SIMS = SIMS;
 })();

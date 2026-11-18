@@ -33,7 +33,7 @@
       x: strip(m.points.join(' ') + ' ' + m.traps.join(' ') + ' ' + (m.ask || []).join(' ') + ' ' + (m.answers || []).join(' '))
     }));
     (window.SIMS || []).forEach(s => I.push({ t: s.title, s: s.tag, k: 'Simulateur', h: '#sim-' + s.id }));
-    ((window.LAB && window.LAB.MISSIONS) || []).forEach((m, i) => I.push({ t: 'Mission ' + i + ' · ' + m.title, s: strip(m.brief).slice(0, 100), k: 'Labo SQL/PySpark', h: '#labo-' + m.id }));
+    ((window.LAB && window.LAB.MISSIONS) || []).forEach(m => I.push({ t: m.title, s: strip(m.brief).slice(0, 100), k: 'Académie Code', h: '#labo-' + m.id }));
     (D.playbooks || []).forEach(p => I.push({ t: p.title, s: p.tag + ' — ' + strip(p.reco).slice(0, 90), k: 'Playbook', h: '#memo', x: strip(p.ctx + ' ' + p.diag + ' ' + p.reco + ' ' + p.trap) }));
     D.glossary.forEach(g => I.push({ t: g[0], s: g[1], k: 'Glossaire', h: '#memo' }));
     return I;
@@ -377,9 +377,9 @@ jobs:
         const clean = {
           n: p.n.trim().slice(0, 40) || 'Collègue',
           xp: Math.max(0, Math.min(2500, Math.round(p.xp))),
-          s: Math.max(0, Math.min(20, Number(p.s) || 0)),
-          m: Math.max(0, Math.min(15, Number(p.m) || 0)),
-          sm: Math.max(0, Math.min(20, Number(p.sm) || 0)),
+          s: Math.max(0, Math.min(25, Number(p.s) || 0)),
+          m: Math.max(0, Math.min(30, Number(p.m) || 0)),
+          sm: Math.max(0, Math.min(25, Number(p.sm) || 0)),
           d: p.d.slice(0, 7).map(v => Math.max(0, Math.min(100, Number(v) || 0))),
           tr: p.tr || 'all'
         };

@@ -200,99 +200,114 @@ SHOW GRANTS ON TABLE workspace.dojo.courses_bronze;`
       ]
     },
     {
-      id: `m4`, day: `J2`, title: `Notebooks`, sub: `Cellules, magic commands, dbutils, widgets`,
+      id: `m4`, day: `J2`, title: `Notebooks & Python pour la Data`, sub: `Python Data Engineer (f-strings, boucles, dict, fonctions pures), cellules, dbutils, widgets`,
       points: [
+        `<b>Règle d'or Python vs Spark</b> : Ton code Python standard (variables, <code>f-strings</code>, listes, dictionnaires, boucles <code>for</code>) s'exécute sur le <b>Driver</b> (une seule machine) pour <i>orchestrer et construire le plan</i>. Le calcul sur les millions de lignes est délégué aux <b>Workers</b> via les fonctions natives PySpark (<code>F.*</code>).`,
+        `<b>Les 5 briques Python indispensables en Data Engineering</b> : <b>1) <code>f-strings</code></b> (<code>f"{catalog}.silver.{table}"</code>) pour paramétrer les requêtes et chemins. <b>2) Listes & boucles <code>for</code> sur les colonnes</b> (<code>for c in cols_texte: df = df.withColumn(c, ...)</code>) pour transformer 20 colonnes sans copier-coller. <b>3) Dictionnaires (<code>dict</code>)</b> pour les mappings (<code>df.fillna({"devise": "EUR"})</code>, <code>df.withColumnsRenamed(mapping)</code>). <b>4) Fonctions pures (<code>def</code>)</b> chaînées avec <code>df.transform(fn)</code>. <b>5) Assertions (<code>assert</code> / <code>pytest</code>)</b> et <code>try / except</code>.`,
         `Un notebook a un langage par défaut ; une <b>magic command</b> en tête de cellule en change : <code>%python</code>, <code>%sql</code>, <code>%scala</code>, <code>%r</code>, <code>%md</code>.`,
         `Autres magics : <code>%run ./autre_notebook</code> (inclut son contenu), <code>%pip install</code> (bibliothèque pour la session), <code>%fs</code> et <code>%sh</code>.`,
-        `<b>dbutils</b> : <code>dbutils.fs</code> (fichiers), <code>dbutils.widgets</code> (paramètres), <code>dbutils.secrets</code> (secrets, jamais affichés en clair), <code>dbutils.notebook.run</code> (appel d'un notebook avec paramètres).`,
-        `<code>display(df)</code> affiche un tableau interactif et des graphiques ; <code>df.show()</code> n'imprime que du texte.`,
-        `Le résultat d'une cellule SQL est disponible en Python dans la variable <code>_sqldf</code>. À l'inverse, <code>df.createOrReplaceTempView("v")</code> rend un DataFrame interrogeable en SQL.`,
-        `Les <b>widgets</b> transforment un notebook en traitement paramétrable : c'est par eux qu'un job lui passe ses paramètres.`,
-        `Versionne tes notebooks avec les <b>Git folders</b> (ex-Repos) plutôt qu'avec l'historique intégré.`
+        `<b>dbutils</b> : <code>dbutils.fs</code> (fichiers), <code>dbutils.widgets</code> (paramètres d'entrée), <code>dbutils.secrets</code> (secrets masqués <code>[REDACTED]</code>), <code>dbutils.jobs.taskValues</code> (passer des compteurs entre tâches d'un job).`,
+        `<code>display(df)</code> affiche un tableau interactif et des graphiques ; <code>df.show()</code> n'imprime que du texte. Le résultat d'une cellule SQL est disponible en Python dans <code>_sqldf</code>.`,
+        `Versionne tes notebooks et tes modules Python (<code>.py</code>) avec les <b>Git folders</b> (ex-Repos) plutôt qu'avec l'historique intégré.`
       ],
       code: [
-        { t: `Lire, transformer, écrire`, c: `from pyspark.sql import functions as F
+        { t: `Python Data 1 · Paramétrer avec widgets et f-strings (Driver)`, c: `dbutils.widgets.text("catalog", "ventes_dev")
+dbutils.widgets.text("date_traitement", "2026-07-01")
 
-df = spark.read.table("samples.nyctaxi.trips")
+cat = dbutils.widgets.get("catalog")
+jour = dbutils.widgets.get("date_traitement")
 
-silver = (df
-  .filter(F.col("trip_distance") > 0)
-  .withColumn("duree_min",
-      (F.unix_timestamp("tpep_dropoff_datetime") - F.unix_timestamp("tpep_pickup_datetime")) / 60)
-  .withColumn("jour", F.to_date("tpep_pickup_datetime")))
+# La f-string assemble dynamiquement le nom complet à 3 niveaux (Unity Catalog)
+table_cible = f"{cat}.silver.commandes"
+print(f"Traitement de {table_cible} pour la date {jour}")` },
+        { t: `Python Data 2 · Boucle for sur les colonnes, dict et fonction pure (.transform)`, c: `from pyspark.sql import DataFrame, functions as F
 
-display(silver.limit(20))
-silver.write.mode("overwrite").saveAsTable("workspace.dojo.courses_silver")` },
-        { t: `Widgets et secrets`, c: `dbutils.widgets.text("date_traitement", "2016-01-15")
-d = dbutils.widgets.get("date_traitement")
+def standardiser_clients(df: DataFrame, cols_texte: list, defauts: dict) -> DataFrame:
+    """Fonction pure testable avec pytest : aucun effet de bord, 100 % distribué."""
+    # Boucle Python sur les NOMS de colonnes (tourne en 1 ms sur le Driver)
+    for c in cols_texte:
+        df = df.withColumn(c, F.upper(F.trim(F.col(c))))
+    # Application d'un dictionnaire Python pour boucher les NULL
+    return df.fillna(defauts).dropDuplicates(["client_id"])
 
-jour = spark.read.table("workspace.dojo.courses_silver").filter(F.col("jour") == d)
-print(jour.count())
+cols = ["nom", "prenom", "ville"]
+regles_null = {"email": "inconnu@exemple.fr", "segment": "PARTICULIER"}
 
-# Un secret n'apparaît jamais en clair dans les sorties
-# pwd = dbutils.secrets.get(scope="scope_crm", key="pwd")` }
+silver_df = (spark.read.table(f"{cat}.bronze.clients")
+    .transform(standardiser_clients, cols, regles_null))
+
+assert silver_df.filter(F.col("email").isNull()).count() == 0, "Il reste des emails NULL !"
+silver_df.write.mode("overwrite").saveAsTable(f"{cat}.silver.clients")` }
       ],
       traps: [
+        `Faire <code>from pyspark.sql.functions import *</code> : cela écrase les fonctions natives de Python (<code>max()</code>, <code>min()</code>, <code>sum()</code>, <code>round()</code>) et provoque des bugs incompréhensibles. Importe toujours <code>from pyspark.sql import functions as F</code> !`,
+        `Boucler en Python sur les lignes de données (<code>for row in df.collect():</code>) au lieu de boucler sur les noms de colonnes (<code>for c in df.columns:</code>).`,
         `<code>%run</code> et <code>dbutils.notebook.run</code> ne font pas la même chose : le premier partage les variables, le second lance une exécution isolée.`,
         `Un <code>%pip install</code> au milieu du notebook relance l'interpréteur Python et efface les variables : place-le en tête.`,
-        `Partager un notebook en lecture alors que des résultats sensibles sont affichés : les sorties voyagent avec le notebook. Efface-les avant de partager.`,
-        `Écrire des identifiants ou des mots de passe en dur dans une cellule.`,
-        `Laisser toute la logique dans des notebooks géants : sors les fonctions réutilisables dans des fichiers Python testables.`
+        `Laisser toute la logique dans des notebooks géants : sors les fonctions pures (<code>def</code>) dans des fichiers Python (<code>.py</code>) testables avec <code>pytest</code>.`
       ],
       ask: [
         `Notebooks ou fichiers Python : comment répartir le code dans un projet réel ?`,
-        `Comment organisez-vous les Git folders et les branches en équipe ?`,
-        `Quelles conventions de nommage et de structure pour les notebooks d'un pipeline ?`
+        `Quand a-t-on le droit d'utiliser une boucle for Python dans un projet Spark ?`,
+        `Comment organisez-vous les Git folders et les branches en équipe ?`
       ],
       answers: [
-        `<b>Synthèse :</b> Le patron d'or en production : <b>le notebook est une coquille fine d'orchestration</b> (lecture des widgets, lecture des tables, appel d'une fonction de transformation, écriture de la table cible). Toute la logique métier réutilisable (nettoyage, règles de gestion, calculs) vit dans des <b>modules Python (<code>.py</code>)</b> dans le même Git folder.<br><b>Réflexe Keyrus :</b> Grâce à ce découpage, tu peux tester unitairement tes fonctions Python avec <code>pytest</code> en CI/CD en 3 secondes, tout en gardant le confort visuel de <code>display()</code> en notebook.`,
-        `<b>Synthèse :</b> Chaque développeur possède son propre <b>Git folder</b> dans son dossier personnel (<code>/Workspace/Users/prenom.nom@client.fr/mon-repo</code>) calé sur sa branche de fonctionnalité (<code>feat/...</code>). Personne ne modifie directement les fichiers des environnements partagés : c'est la pipeline CI/CD (via Asset Bundles) qui déploie les branches <code>main</code> / <code>release</code> vers dev, uat et prod.`,
-        `<b>Synthèse :</b> Numérote et préfixe par couche : <code>01_bronze_ingest_...</code>, <code>02_silver_clean_...</code>, <code>03_gold_agg_...</code>. Impose une structure en 4 blocs dans chaque notebook : <b>1) Entête Markdown + <code>%pip</code></b>, <b>2) Déclaration et lecture des widgets</b>, <b>3) Transformations</b>, <b>4) Écriture idempotente + publication des <code>taskValues</code></b>.`
+        `<b>Synthèse :</b> Le patron d'or en production : <b>le notebook est une coquille fine d'orchestration</b> (lecture des widgets, lecture des tables, appel d'une fonction de transformation via <code>df.transform(ma_fonction)</code>, écriture de la table cible). Toute la logique métier réutilisable (nettoyage, règles de gestion, calculs) vit dans des <b>modules Python (<code>.py</code>)</b> dans le même Git folder.<br><b>Réflexe Keyrus :</b> Grâce à ce découpage, tu peux tester unitairement tes fonctions Python avec <code>pytest</code> en CI/CD en 3 secondes, tout en gardant le confort visuel de <code>display()</code> en notebook.`,
+        `<b>Synthèse :</b> Tu dois utiliser une boucle <code>for</code> Python <b>uniquement sur les métadonnées (Driver)</b> : boucler sur une liste de 15 colonnes pour ajouter des <code>.withColumn()</code> au plan Catalyst, ou boucler sur une liste de 10 tables de référence à ingérer. En revanche, tu ne dois <b>jamais</b> boucler en Python sur les lignes d'un DataFrame (<code>df.collect()</code>) : sur les lignes, seules les expressions vectorisées <code>F.*</code> travaillent.`,
+        `<b>Synthèse :</b> Chaque développeur possède son propre <b>Git folder</b> dans son dossier personnel (<code>/Workspace/Users/prenom.nom@client.fr/mon-repo</code>) calé sur sa branche de fonctionnalité (<code>feat/...</code>). Personne ne modifie directement les fichiers des environnements partagés : c'est la pipeline CI/CD (via Asset Bundles) qui déploie les branches <code>main</code> / <code>release</code> vers dev, uat et prod.`
       ],
       lab: {
-        title: `Un notebook paramétré bilingue`, time: `30 min`,
+        title: `Un notebook paramétré bilingue & fonction pure`, time: `30 min`,
         steps: [
-          `Crée un notebook Python et construis <code>workspace.dojo.courses_silver</code> avec le premier extrait de code.`,
-          `Ajoute un widget <code>date_traitement</code> et filtre la table dessus.`,
+          `Pratique d'abord les 4 paliers de l'<b>École Python pour la Data (P1 à P4)</b> directement dans l'onglet Académie / Labo de cette application.`,
+          `Dans Databricks, crée un notebook Python et ajoute un widget <code>date_traitement</code>.`,
+          `Écris une fonction pure <code>def filtrer_courses(df, jour):</code> qui nettoie et filtre les courses, puis applique-la avec <code>.transform()</code>.`,
           `Dans une cellule <code>%sql</code>, calcule le prix moyen par jour ; récupère le résultat en Python via <code>_sqldf</code>.`,
-          `Ajoute une cellule <code>%md</code> qui documente le notebook.`,
-          `Change la valeur du widget et relance tout (Run all).`
+          `Ajoute un test <code>assert</code> vérifiant qu'aucune course n'a une distance négative ou nulle.`
         ],
-        sol: `%sql
-SELECT jour, count(*) AS courses, round(avg(fare_amount), 2) AS prix_moyen
-FROM workspace.dojo.courses_silver
-WHERE jour = :date_traitement
-GROUP BY jour;
+        sol: `from pyspark.sql import functions as F
 
--- Cellule Python suivante :
--- display(_sqldf)`
+dbutils.widgets.text("date_traitement", "2016-01-15")
+jour_cible = dbutils.widgets.get("date_traitement")
+
+def preparer_courses(df, j):
+    return (df
+        .filter(F.col("trip_distance") > 0)
+        .withColumn("jour", F.to_date("tpep_pickup_datetime"))
+        .filter(F.col("jour") == j))
+
+res = spark.read.table("samples.nyctaxi.trips").transform(preparer_courses, jour_cible)
+assert res.filter("trip_distance <= 0").count() == 0, "Distance invalide détectée !"
+display(res.limit(20))`
       },
       quiz: [
+        { q: `Pourquoi écrit-on "from pyspark.sql import functions as F" plutôt que "from pyspark.sql.functions import *" ?`, o: [`Pour aller plus vite au clavier`, `Pour ne pas écraser les fonctions natives de Python comme max(), min(), sum() ou round()`, `Parce que import * est interdit par Unity Catalog`, `Pour activer l'autoscaling`], a: 1, e: `Importer * remplace max() et sum() de Python par les fonctions de colonnes Spark, ce qui casse le reste du code Python.` },
+        { q: `Quel usage d'une boucle "for" Python est une bonne pratique en PySpark ?`, o: [`for row in df.collect(): pour modifier chaque ligne`, `for c in ["nom", "ville"]: df = df.withColumn(c, F.upper(F.trim(c))) pour construire le plan sur les colonnes`, `Une boucle while infinie sur les partitions`, `Aucune boucle for n'est autorisée dans un fichier .py`], a: 1, e: `Boucler sur une liste de noms de colonnes s'exécute en 1 ms sur le Driver et construit un plan Catalyst 100 % distribué.` },
+        { q: `Quelle syntaxe Python permet d'insérer proprement la variable "cat" dans le nom d'une table ?`, o: [`"cat.silver.clients"`, `f"{cat}.silver.clients"`, `"%cat%.silver.clients"`, `cat -> silver.clients`], a: 1, e: `Les f-strings (f"...") évaluent les expressions entre accolades directement dans la chaîne.` },
         { q: `Quelle magic command exécute un autre notebook en partageant ses variables ?`, o: [`%sh`, `%run`, `%fs`, `%md`], a: 1, e: `%run inclut le notebook cible dans le contexte courant. dbutils.notebook.run lance une exécution séparée.` },
         { q: `Comment un job transmet-il un paramètre à un notebook ?`, o: [`Par une variable d'environnement Windows`, `Par un widget lu avec dbutils.widgets.get`, `Par un commentaire en tête de cellule`, `Ce n'est pas possible`], a: 1, e: `Les paramètres de tâche alimentent les widgets du notebook.` },
-        { q: `Dans une cellule Python, comment récupérer le résultat de la cellule SQL précédente ?`, o: [`Avec la variable _sqldf`, `Avec dbutils.sql.last()`, `Avec spark.lastResult`, `Il faut relancer la requête`], a: 0, e: `_sqldf contient le DataFrame résultat de la dernière cellule SQL.` },
-        { q: `Que fait dbutils.secrets.get dans une sortie de cellule ?`, o: [`Il affiche le secret en clair`, `Il renvoie la valeur, mais l'affichage est masqué`, `Il échoue toujours en notebook`, `Il écrit le secret dans un fichier`], a: 1, e: `La valeur est utilisable par le code, mais remplacée par [REDACTED] à l'affichage.` },
-        { q: `Quelle est la bonne pratique de versionnement des notebooks ?`, o: [`Exporter en .dbc chaque semaine`, `Les Git folders reliés à un dépôt`, `Dupliquer le notebook avant chaque modification`, `L'historique intégré suffit`], a: 1, e: `Les Git folders relient le workspace à un dépôt Git : branches, revues, CI/CD.` }
+        { q: `Que fait dbutils.secrets.get dans une sortie de cellule ?`, o: [`Il affiche le secret en clair`, `Il renvoie la valeur au code, mais l'affichage est masqué par [REDACTED]`, `Il échoue toujours en notebook`, `Il écrit le secret dans un fichier`], a: 1, e: `La valeur est utilisable par le code, mais remplacée par [REDACTED] à l'affichage.` }
       ],
       cards: [
+        [`Règle d'or : Python sur le Driver vs Spark sur les Workers`, `Python (variables, f-strings, listes, dict, boucles sur les colonnes) orchestre et bâtit le plan sur le Driver. Les calculs sur les lignes s'exécutent via F.* sur les Workers.`],
+        [`Pourquoi bannir "from pyspark.sql.functions import *" ?`, `Parce qu'il écrase les fonctions Python natives (max, min, sum, round, abs) et déclenche des TypeError.`],
+        [`À quoi sert df.transform(ma_fonction) ?`, `À chaîner proprement des fonctions Python pures (DataFrame -> DataFrame) faciles à tester avec pytest.`],
         [`%run vs dbutils.notebook.run`, `%run : inclusion, variables partagées. dbutils.notebook.run : exécution isolée, avec paramètres et valeur de retour.`],
         [`À quoi servent les widgets ?`, `À paramétrer un notebook ; les jobs y injectent leurs paramètres.`],
-        [`display() vs show()`, `display : tableau interactif et graphiques. show : texte brut.`],
-        [`Passer d'un DataFrame Python à SQL`, `df.createOrReplaceTempView("v") puis SELECT ... FROM v.`],
-        [`Les 4 familles de dbutils à connaître`, `fs, widgets, secrets, notebook.`]
+        [`Les 4 familles de dbutils à connaître`, `fs, widgets, secrets, jobs.taskValues (et notebook).`]
       ]
     },
     {
-      id: `m5`, day: `J2`, title: `Fondamentaux de Spark & PySpark`, sub: `Partir de zéro en PySpark, évaluation paresseuse, shuffle et partitions`,
+      id: `m5`, day: `J2`, title: `Fondamentaux & Patterns de Spark / PySpark`, sub: `Partir de zéro jusqu'aux Window functions, Dates, Regex, Nulls, Broadcast et Shuffle`,
       points: [
         `<b>Partir de zéro : les 3 objets PySpark</b> : <b>1) <code>spark</code></b> est ton point d'entrée pour lire une table (<code>spark.table("clients")</code>). <b>2) <code>df</code></b> est ton DataFrame : une table distribuée et <b>immuable</b> (appeler <code>df.filter(...)</code> ne modifie pas <code>df</code>, cela renvoie un <i>nouveau</i> DataFrame !). <b>3) <code>F</code></b> (<code>from pyspark.sql import functions as F</code>) est la boîte à outils des fonctions SQL (<code>F.col</code>, <code>F.upper</code>, <code>F.sum</code>, <code>F.when</code>).`,
-        `<b>La règle d'or <code>"nom"</code> contre <code>F.col("nom")</code></b> : Quand tu ne fais que <i>désigner</i> une colonne existante (<code>.select("nom", "ville")</code>, <code>.groupBy("segment")</code>, <code>.join(autre, "client_id")</code>), un simple texte suffit. Dès que tu <i>calcules, compares ou appelles une fonction</i> (<code>F.col("montant") &gt; 0</code>, <code>F.upper(F.trim("nom"))</code>), utilise <code>F</code>.`,
-        `<b>Traduction mentale depuis le SQL</b> : <code>FROM t</code> → <code>spark.table("t")</code> · <code>WHERE</code> → <code>.filter(...)</code> · <code>SELECT</code> → <code>.select(...)</code> · <code> Ajouter/modifier une colonne</code> → <code>.withColumn("col", ...)</code> · <code>CASE WHEN</code> → <code>F.when(cond, val).otherwise(val2)</code> · <code>SELECT DISTINCT</code> → <code>.dropDuplicates()</code>.`,
+        `<b>La règle d'or <code>"nom"</code> contre <code>F.col("nom")</code></b> : Quand tu ne fais que <i>désigner</i> une colonne existante (<code>.select("nom", "ville")</code>, <code>.groupBy("segment")</code>, <code>.join(autre, "client_id")</code>), un simple texte suffit. Dès que tu <i>calcules, compares ou appelles une fonction</i> (<code>F.col("montant") &gt; 0</code>, <code>F.upper(F.trim("nom"))</code>), utilise <code>F</code>. Pour passer une constante à une fonction Spark, enveloppe-la dans <code>F.lit("valeur")</code>.`,
+        `<b>Boîte à outils terrain (Nulls, Dates, Regex, Fenêtres)</b> : <b>Nulls</b> → <code>F.coalesce(col1, F.lit("defaut"))</code> ou <code>df.fillna({"col": "val"})</code> · <b>Dates</b> → <code>F.to_date</code>, <code>F.trunc(col, "month")</code>, <code>F.datediff(fin, debut)</code> · <b>Texte/Regex</b> → <code>F.regexp_replace</code>, <code>F.substring</code>, <code>F.split</code> · <b>Fenêtres (<code>Window.partitionBy</code>)</b> → numéroter (<code>F.row_number().over(w)</code>) ou calculer un sous-total sans réduire les lignes.`,
         `<b>Évaluation paresseuse (Lazy Evaluation)</b> : les <i>transformations</i> (<code>select</code>, <code>filter</code>, <code>withColumn</code>, <code>join</code>, <code>groupBy</code>) construisent un plan sans toucher aux données ; rien ne s'exécute avant une <i>action</i> (<code>display(df)</code>, <code>count()</code>, <code>show()</code>, <code>write.saveAsTable()</code>).`,
-        `Transformation <b>étroite (narrow)</b> (<code>filter</code>, <code>select</code>, <code>withColumn</code>) : chaque partition se traite seule en mémoire sur son worker. Transformation <b>large (wide)</b> (<code>join</code>, <code>groupBy</code>, <code>orderBy</code>, <code>dropDuplicates</code>) : il faut redistribuer les lignes par clé sur le réseau — c'est le <b>shuffle</b>, l'opération la plus coûteuse.`,
+        `Transformation <b>étroite (narrow)</b> (<code>filter</code>, <code>select</code>, <code>withColumn</code>) : chaque partition se traite seule en mémoire sur son worker. Transformation <b>large (wide)</b> (<code>join</code>, <code>groupBy</code>, <code>orderBy</code>, <code>dropDuplicates</code>, <code>Window</code>) : il faut redistribuer les lignes par clé sur le réseau — c'est le <b>shuffle</b>, l'opération la plus coûteuse.`,
         `Découpage physique : 1 action = 1 <b>job</b> ; chaque shuffle coupe le job en <b>stages</b> (séparés par <code>Exchange</code> dans le plan) ; chaque partition d'un stage = 1 <b>task</b> exécutée sur un cœur CPU.`,
         `<b>Catalyst & AQE</b> : Catalyst réordonne et optimise ton code (repousse les filtres à la source, ne lit que les colonnes utiles) — SQL et PySpark produisent <b>exactement le même plan physique</b>. <b>AQE</b> réajuste le plan en plein vol (fusionne les petites partitions, convertit un join en <b>Broadcast Join</b> si une table est petite, découpe les partitions victimes de <i>skew</i>).`,
-        `<b>Fonctions natives vs UDF Python</b> : N'utilise jamais de boucle <code>for</code> ni d'UDF Python classique quand une fonction de <code>pyspark.sql.functions</code> existe : les fonctions natives restent dans le moteur C++ (Photon) alors qu'une UDF Python sérialise les lignes une par une.`
+        `<b>Fonctions natives vs UDF Python</b> : N'utilise jamais de boucle <code>for</code> sur les lignes ni d'UDF Python classique quand une fonction de <code>pyspark.sql.functions</code> existe : les fonctions natives restent dans le moteur C++ (Photon) alors qu'une UDF Python sérialise les lignes une par une.`
       ],
       code: [
         { t: `Palier 1 · Lire, filtrer et choisir ses colonnes (SELECT … WHERE)`, c: `from pyspark.sql import functions as F
@@ -911,6 +926,19 @@ databricks bundle run <nom_du_job> -t dev`
       desc: `Le parcours intégral de la formation Databricks : des fondations jusqu'à l'industrialisation par Asset Bundles.`,
       mods: [`m1`, `m2`, `m3`, `m4`, `m5`, `m6`, `m7`, `m8`, `m9`, `m10`, `m11`]
     },
+    trinite: {
+      label: `Trinité Python + Spark + Databricks (Zéro → Hero)`,
+      time: `~12 h · Les 3 compétences`,
+      desc: `Le parcours maître pour devenir 100 % opérationnel sur les 3 piliers : Python appliqué au Data Engineering (f-strings, boucles, dict, fonctions pures, pytest), Spark/PySpark distribué et la plateforme Databricks.`,
+      mods: [`m1`, `m3`, `m4`, `m5`, `m6`, `m7`, `m9`, `m10`, `m11`],
+      steps: [
+        `<b>Pilier 1 · Maîtriser Python pour la Data (45 min)</b> : Étudie le module <a href="#module-m4">4 (Notebooks & Python pour la Data)</a>, réussis le simulateur <a href="#sim-pydriver">Python sur le Driver vs Spark sur les Workers</a>, puis valide les 4 paliers <a href="#labo-p1">P1 à P4 de l'École Python Data</a> (f-strings, boucles sur colonnes, dict, fonctions <code>def</code> et tests <code>assert</code>).`,
+        `<b>Pilier 2 · Devenir autonome en Spark & PySpark (1 h 30)</b> : Étudie le module <a href="#module-m5">5 (Spark & PySpark)</a>, manipule les simulateurs <a href="#sim-spark">Paresse et shuffle</a> et <a href="#sim-pyspark">De SQL à PySpark</a>, puis valide les 10 paliers <a href="#labo-s1">S1 à S10 de l'École Spark & PySpark</a> (de <code>.select()</code> jusqu'aux <code>Window</code>, dates et <code>F.broadcast()</code>).`,
+        `<b>Pilier 3 · Gouverner et fiabiliser avec Unity Catalog & Delta Lake (1 h 15)</b> : Parcoure les modules <a href="#module-m3">3 (Unity Catalog)</a> et <a href="#module-m6">6 (Delta Lake)</a>, puis réalise les missions <a href="#labo-m1">M1 à M4</a> et <a href="#labo-m7">M7–M8</a> de la Banque Lanterne en <b>Mode Python & PySpark</b>.`,
+        `<b>Pilier 4 · Orchestrer, ingérer et diagnostiquer la Prod (1 h)</b> : Valide les simulateurs <a href="#sim-dlt">Expectations Lakeflow</a>, <a href="#sim-autoloader">Auto Loader</a>, <a href="#sim-sparkui">Diagnostic Spark UI</a> et <a href="#sim-stacktrace">Clinique des Stacktraces</a>.`,
+        `<b>Pilier 5 · Industrialiser avec Asset Bundles & CI/CD (30 min)</b> : Étudie le module <a href="#module-m11">11 (Industrialisation)</a> et génère ton <a href="#labs">Starter Kit Asset Bundle</a> complet avec tests <code>pytest</code>.`
+      ]
+    },
     express: {
       label: `Sprint Express (Absents formation)`,
       time: `2 h chrono · 6 modules clés`,
@@ -925,16 +953,16 @@ databricks bundle run <nom_du_job> -t dev`
       ]
     },
     spark: {
-      label: `Initiation Spark & PySpark (Zéro → Autonome)`,
-      time: `~3 h · Progression pas à pas`,
-      desc: `Tu ne connais pas encore Spark ni PySpark ? Ce parcours progressif part de zéro (ou de ton bagage SQL) pour t'apprendre à penser en distribué et à écrire du PySpark propre sur Databricks, palier par palier.`,
+      label: `Initiation Python & PySpark (Zéro → Autonome)`,
+      time: `~3 h 30 · 14 paliers guidés`,
+      desc: `Tu débutes en Python et/ou en Spark ? Ce parcours progressif part de zéro pour t'apprendre d'abord les bases Python Data (P1–P4), puis PySpark distribué (S1–S10) et le diagnostic Spark UI.`,
       mods: [`m4`, `m5`, `m6`, `m10`],
       steps: [
-        `<b>Étape 1 · Comprendre la mécanique sans code (20 min)</b> : Lis le module <a href="#module-m5">5 (Fondamentaux de Spark & PySpark)</a> et manipule le simulateur <a href="#sim-spark">Paresse et shuffle</a> pour voir pourquoi rien ne bouge avant une action.`,
-        `<b>Étape 2 · Apprivoiser la grammaire PySpark (20 min)</b> : Fais les 4 paliers du nouveau simulateur <a href="#sim-pyspark">De SQL à PySpark : brique par brique</a> et garde sous la main le <a href="#memo">Dictionnaire SQL ⇄ PySpark</a>.`,
-        `<b>Étape 3 · Tes 6 premiers scripts dans l'École PySpark (45 min)</b> : Ouvre le <a href="#labo-s1">Labo en mode École PySpark (Paliers S1 à S6)</a> : 1) <code>.select()</code>, 2) <code>.filter()</code>, 3) <code>.withColumn()</code>, 4) <code>F.when()</code>, 5) <code>.groupBy().agg()</code>, 6) <code>.join()</code>.`,
-        `<b>Étape 4 · Construire un vrai pipeline en PySpark (45 min)</b> : Passe aux missions <a href="#labo-m2">M2 (Clients propres)</a>, <a href="#labo-m3">M3 (Silver & rejets)</a> et <a href="#labo-m4">M4 (Gold)</a> en <b>Mode PySpark</b> et inspecte le <code>Physical Plan</code> généré.`,
-        `<b>Étape 5 · Diagnostiquer comme un pro (20 min)</b> : Résous les 4 pannes classiques (Skew, Spill, Petits fichiers, Shuffle) dans le simulateur <a href="#sim-sparkui">Diagnostic Spark UI</a> du module <a href="#module-m10">10</a>.`
+        `<b>Étape 1 · Les 4 briques Python Data (30 min)</b> : Lis le module <a href="#module-m4">4 (Python pour la Data)</a>, teste le simulateur <a href="#sim-pydriver">Driver vs Workers</a>, puis valide les paliers <a href="#labo-p1">P1 (f-strings)</a>, <a href="#labo-p2">P2 (boucle for sur colonnes)</a>, <a href="#labo-p3">P3 (dict & fillna)</a> et <a href="#labo-p4">P4 (def & assert)</a>.`,
+        `<b>Étape 2 · Comprendre la mécanique Spark (20 min)</b> : Lis le module <a href="#module-m5">5 (Spark & PySpark)</a> et manipule les simulateurs <a href="#sim-spark">Paresse et shuffle</a> et <a href="#sim-pyspark">De SQL à PySpark : brique par brique</a>.`,
+        `<b>Étape 3 · Les 10 paliers de l'École Spark & PySpark (1 h)</b> : Valide dans le Labo les paliers <a href="#labo-s1">S1 à S6 (bases DataFrame)</a> puis <a href="#labo-s7">S7 (Nulls/texte)</a>, <a href="#labo-s8">S8 (Dates)</a>, <a href="#labo-s9">S9 (Window)</a> et <a href="#labo-s10">S10 (Broadcast Join)</a>.`,
+        `<b>Étape 4 · Construire le pipeline Banque Lanterne en PySpark (45 min)</b> : Réalise les missions <a href="#labo-m2">M2 (Clients)</a>, <a href="#labo-m3">M3 (Silver & rejets)</a>, <a href="#labo-m4">M4 (Gold)</a> et <a href="#labo-m8">M8 (Merge 3 jours)</a> en <b>Mode Python & PySpark</b>.`,
+        `<b>Étape 5 · Diagnostiquer & déboguer comme un senior (30 min)</b> : Résous les 4 symptômes dans <a href="#sim-sparkui">Diagnostic Spark UI</a> et les 4 erreurs dans <a href="#sim-stacktrace">Clinique des Stacktraces</a>.`
       ]
     },
     bi: {
@@ -1005,6 +1033,22 @@ databricks bundle run <nom_du_job> -t dev`
       diag: `Sur Delta Lake, chaque <code>UPDATE</code> ou <code>INSERT</code> unitaire crée un nouveau commit et réécrit des fichiers Parquet (ou génère des deletion vectors) : une boucle de 1 000 <code>INSERT</code> met 20 minutes au lieu de 2 secondes.`,
       reco: `Remplacer la logique ligne à ligne par des opérations ensemblistes : construire un DataFrame / CTE de toutes les modifications du lot, puis appliquer <b>un seul <code>MERGE INTO</code></b> ou <b><code>INSERT … REPLACE WHERE</code></b> par table.`,
       trap: `Créer des index ou partitionner une table de 5 Go en 3 000 dossiers par jour + agence : utiliser <code>CLUSTER BY</code> (Liquid Clustering) à la place.`
+    },
+    {
+      title: `Structurer son code Python & PySpark : du Notebook au package testable`,
+      tag: `Python & Indus · Modules 4 & 11`,
+      ctx: `Les développeurs ont écrit 1 200 lignes de PySpark dans un seul notebook avec des variables globales, des copier-coller de <code>.withColumn()</code> et des UDF Python. Chaque mise en production casse un calcul métier.`,
+      diag: `Un notebook monolithique est impossible à tester avec <code>pytest</code>, et les UDF Python cassent l'optimiseur Catalyst/Photon.`,
+      reco: `1) Extraire chaque règle métier dans un module Python (<code>src/transforms.py</code>) sous forme de <b>fonction pure</b> (<code>def clean_orders(df: DataFrame) -> DataFrame:</code>) utilisant des boucles Python sur les métadonnées (<code>for c in cols:</code>) et les fonctions natives <code>F.*</code>. 2) Chaîner ces fonctions dans le notebook avec <code>df.transform(clean_orders)</code>. 3) Exécuter <code>pytest</code> sur un micro-DataFrame local à chaque Pull Request.`,
+      trap: `Faire <code>from pyspark.sql.functions import *</code> en tête de fichier (qui écrase <code>max</code>, <code>sum</code> et <code>round</code> de Python) ou appeler <code>df.collect()</code> dans une fonction de transformation.`
+    },
+    {
+      title: `Ingérer et aplatir des flux JSON complexes (API, IoT, Kafka)`,
+      tag: `PySpark Avancé · Modules 5 & 9`,
+      ctx: `La couche Bronze reçoit des événements JSON contenant des objets imbriqués (<code>client.adresse.ville</code>) et des tableaux de lignes de commande (<code>items[]</code>), avec parfois de nouveaux champs ajoutés par l'application amont.`,
+      diag: `Parser le JSON avec la librairie <code>json.loads()</code> de Python dans une UDF sature le CPU des workers et ignore l'évolution de schéma.`,
+      reco: `Ingérer avec <b>Auto Loader</b> (qui capture les champs imprévus dans <code>_rescued_data</code>), puis utiliser en Silver le type <b><code>VARIANT</code></b> (ou <code>F.from_json</code> / <code>F.get_json_object</code>), accéder aux sous-champs par notation pointée et déplier les tableaux avec <b><code>F.explode("items")</code></b> (ou <code>LATERAL VIEW explode()</code> en SQL).`,
+      trap: `Faire deux <code>F.explode()</code> successifs sur deux tableaux différents dans le même <code>select</code> : cela produit un produit cartésien explosif entre les deux listes !`
     }
   ],
 

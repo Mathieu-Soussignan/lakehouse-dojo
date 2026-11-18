@@ -1,4 +1,4 @@
-// Missions du Labo SQL & PySpark : données pures (SQL de chargement, SQL de référence, missions, starters SQL et PySpark).
+// Missions de l'Académie SQL, Python Data & PySpark : 3 étages (École Python P1-P4, École Spark S1-S10, Pipeline Banque Lanterne M0-M9).
 window.LAB = {
   /* Ce que « la plateforme » a déjà chargé : la couche bronze, lue telle quelle depuis les fichiers. */
   INGEST: `CREATE OR REPLACE TABLE bronze_agences AS SELECT * FROM read_csv('agences.csv', header = true);
@@ -59,9 +59,69 @@ INSERT INTO ref.silver_j3 SELECT a.* FROM ref.lot_3j a WHERE NOT EXISTS (SELECT 
   ],
 
   MISSIONS: [
+    /* ==================== ÉTAGE 1 : ÉCOLE PYTHON POUR LA DATA (P1 à P4) ==================== */
     {
-      id: 's1', group: 'spark', xp: 15, title: 'Palier 1 · Lire et choisir ses colonnes (.select)',
-      brief: '<strong>Bienvenue dans l\'École PySpark !</strong> Si tu n\'as jamais écrit de Spark, on part de zéro, geste par geste.<br>En PySpark, <code>spark.table("bronze_agences")</code> pointe vers la table (comme <code>FROM</code> en SQL) et <code>.select("col1", "col2")</code> choisit les colonnes. Tant que tu n\'appelles pas une <em>action</em> comme <code>display(df)</code>, Spark ne calcule rien (évaluation paresseuse).<br><strong>Ta mission :</strong> Affiche uniquement les colonnes <code>agence_id</code> et <code>nom</code> de la table <code>bronze_agences</code>.',
+      id: 'p1', group: 'python', xp: 20, title: 'Python 1 · Variables, f-strings et requêtes paramétrées',
+      brief: '<strong>Bienvenue dans l\'École Python pour la Data !</strong> Sur Databricks, on n\'écrit jamais les noms d\'environnements, de tables ou de filtres en dur : on les stocke dans des <strong>variables Python</strong> et on les injecte avec une <strong>f-string</strong> (une chaîne préfixée par <code>f"..."</code> où <code>{variable}</code> est remplacé par sa valeur).<br>Ce code Python tourne sur le <strong>Driver</strong> (le chef d\'orchestre) en 1 milliseconde, puis envoie la requête à Spark.<br><strong>Ta mission :</strong> Utilise les variables <code>table_source = "bronze_agences"</code> et <code>region_cible = "Bretagne"</code> dans une <code>f-string</code> passée à <code>spark.sql(f"...")</code> pour renvoyer <code>agence_id, nom, region</code> des agences de Bretagne, triées par <code>agence_id</code>.',
+      starter: 'SELECT agence_id, nom, region FROM bronze_agences WHERE region = \'Bretagne\' ORDER BY agence_id;\n',
+      pyStarter: '# 1. Variables Python exécutées sur le Driver\ntable_source = "bronze_agences"\nregion_cible = "Bretagne"\n\n# 2. Tracer dans la console Python avec print() et une f-string\nprint(f"Extraction de {table_source} pour la région {region_cible}...")\n\n# 3. Construire la requête SQL dynamique avec f"..."\nrequete = f"SELECT agence_id, nom, region FROM {table_source} WHERE region = \'{region_cible}\' ORDER BY agence_id"\ndf = spark.sql(requete)\n\ndisplay(df)\n',
+      hints: [
+        'En Python, une <code>f-string</code> s\'écrit <code>f"texte {ma_variable}"</code> : Python remplace automatiquement <code>{ma_variable}</code> par son contenu.',
+        'Regarde le bandeau « Console Python (Driver print) » qui s\'affiche au-dessus du tableau quand tu cliques sur Exécuter !',
+        'SELECT agence_id, nom, region FROM bronze_agences WHERE region = \'Bretagne\' ORDER BY agence_id;'
+      ],
+      expect: { sql: 'SELECT agence_id, nom, region FROM bronze_agences WHERE region = \'Bretagne\' ORDER BY agence_id', ordered: true },
+      after: 'Tu viens d\'utiliser le pattern n°1 des notebooks Databricks en production : lire des paramètres (via <code>dbutils.widgets.get()</code>) dans des variables Python et construire dynamiquement le nom des tables (<code>f"{catalog}.silver.{table}"</code>) !',
+      py: 'table_source = "bronze_agences"\nregion_cible = "Bretagne"\nprint(f"Extraction de {table_source} pour la région {region_cible}...")\ndf = spark.sql(f"SELECT agence_id, nom, region FROM {table_source} WHERE region = \'{region_cible}\' ORDER BY agence_id")\ndisplay(df)'
+    },
+    {
+      id: 'p2', group: 'python', xp: 25, title: 'Python 2 · Listes et boucle for sur les métadonnées',
+      brief: 'Imagine une table avec 25 colonnes texte à nettoyer (retirer les espaces et mettre en majuscules). Un débutant copie-colle 25 fois <code>.withColumn(...)</code>. Un Data Engineer crée une <strong>liste Python</strong> <code>colonnes_texte = ["nom", "prenom", "ville"]</code> et écrit une <strong>boucle <code>for</code> Python</strong> :<br><code>for c in colonnes_texte:</code><br><code>&nbsp;&nbsp;&nbsp;&nbsp;df = df.withColumn(c, F.upper(F.trim(F.col(c))))</code><br>⚠️ <strong>Règle d\'or :</strong> Cette boucle est ultra-rapide car elle tourne 3 fois sur les <em>noms de colonnes</em> (sur le Driver), jamais sur les lignes de données !<br><strong>Ta mission :</strong> À partir de <code>bronze_clients</code>, sélectionne <code>"client_id", "nom", "prenom", "ville"</code>, nettoie les 3 colonnes <code>["nom", "prenom", "ville"]</code> en majuscules sans espaces via une boucle <code>for</code>, puis retire les doublons avec <code>.dropDuplicates()</code>.',
+      starter: 'SELECT DISTINCT client_id, upper(trim(nom)) AS nom, upper(trim(prenom)) AS prenom, upper(trim(ville)) AS ville\nFROM bronze_clients;\n',
+      pyStarter: 'from pyspark.sql import functions as F\n\ncolonnes_texte = ["nom", "prenom", "ville"]\ndf = spark.table("bronze_clients").select("client_id", *colonnes_texte)\n\n# Boucle Python sur la liste des colonnes pour empiler les transformations dans le plan Spark :\nfor c in colonnes_texte:\n    df = df.withColumn(c, F.upper(F.trim(F.col(c))))\n\n# Déduplique après nettoyage\npropre = df.dropDuplicates()\nprint(f"Colonnes nettoyées : {colonnes_texte}")\ndisplay(propre)\n',
+      hints: [
+        'Remarque l\'opérateur Python <code>*colonnes_texte</code> (unpacking) dans <code>.select("client_id", *colonnes_texte)</code> : il déballe la liste comme si tu avais écrit les 3 arguments !',
+        'Dans la boucle <code>for c in colonnes_texte:</code>, n\'oublie pas l\'indentation (4 espaces) et de réaffecter <code>df = df.withColumn(c, F.upper(F.trim(F.col(c))))</code>.',
+        'SELECT DISTINCT client_id, upper(trim(nom)) AS nom, upper(trim(prenom)) AS prenom, upper(trim(ville)) AS ville FROM bronze_clients;'
+      ],
+      expect: { sql: 'SELECT DISTINCT client_id, upper(trim(nom)) AS nom, upper(trim(prenom)) AS prenom, upper(trim(ville)) AS ville FROM bronze_clients' },
+      after: 'Regarde le graphe Catalyst sous le tableau : ta boucle Python de 2 lignes a généré automatiquement les 3 étapes <code>Project [withColumn …]</code> dans le plan physique Spark ! C\'est exactement comme ça qu\'on programme des pipelines pilotés par métadonnées.',
+      py: 'from pyspark.sql import functions as F\n\ncolonnes_texte = ["nom", "prenom", "ville"]\ndf = spark.table("bronze_clients").select("client_id", *colonnes_texte)\nfor c in colonnes_texte:\n    df = df.withColumn(c, F.upper(F.trim(F.col(c))))\ndisplay(df.dropDuplicates())'
+    },
+    {
+      id: 'p3', group: 'python', xp: 25, title: 'Python 3 · Dictionnaires (dict), .fillna() et renommage',
+      brief: 'En Python, le <strong>dictionnaire</strong> (<code>{"cle": "valeur"}</code>) est la structure reine pour configurer un traitement sans coder de logique en dur :<br>• <strong>Remplacer les <code>NULL</code></strong> : <code>df.fillna({"email": "pro_sans_email@lanterne.fr"})</code> applique une valeur par défaut différente à chaque colonne citée.<br>• <strong>Renommer plusieurs colonnes</strong> : <code>df.withColumnsRenamed({"client_id": "id_client"})</code> (ou une boucle <code>for ancien, nouveau in mapping.items():</code>).<br><strong>Ta mission :</strong> Sur <code>bronze_clients</code>, sélectionne <code>"client_id", "nom", "email", "segment"</code>, filtre sur <code>segment == "PROFESSIONNEL"</code>, nettoie <code>"nom"</code> (<code>upper(trim)</code>), retire les doublons, remplace les <code>email</code> nuls par <code>"pro_sans_email@lanterne.fr"</code> et renomme <code>"client_id"</code> en <code>"id_client"</code>.',
+      starter: 'SELECT DISTINCT\n  client_id AS id_client,\n  upper(trim(nom)) AS nom,\n  coalesce(email, \'pro_sans_email@lanterne.fr\') AS email,\n  segment\nFROM bronze_clients\nWHERE segment = \'PROFESSIONNEL\';\n',
+      pyStarter: 'from pyspark.sql import functions as F\n\n# Dictionnaires Python de configuration\ndefauts_null = {"email": "pro_sans_email@lanterne.fr"}\nrenommages = {"client_id": "id_client"}\n\ndf = (spark.table("bronze_clients")\n    .select("client_id", "nom", "email", "segment")\n    .filter(F.col("segment") == "PROFESSIONNEL")\n    .withColumn("nom", F.upper(F.trim("nom")))\n    .dropDuplicates()\n    .fillna(defauts_null)\n    .withColumnsRenamed(renommages)\n)\n\ndisplay(df)\n',
+      hints: [
+        '<code>.fillna(defauts_null)</code> remplace tous les <code>NULL</code> de la colonne <code>email</code> par la valeur associée dans le dictionnaire Python.',
+        '<code>.withColumnsRenamed(renommages)</code> renomme toutes les clés du dictionnaire d\'un seul coup.',
+        'SELECT DISTINCT client_id AS id_client, upper(trim(nom)) AS nom, coalesce(email, \'pro_sans_email@lanterne.fr\') AS email, segment FROM bronze_clients WHERE segment = \'PROFESSIONNEL\';'
+      ],
+      expect: { sql: 'SELECT DISTINCT client_id AS id_client, upper(trim(nom)) AS nom, coalesce(email, \'pro_sans_email@lanterne.fr\') AS email, segment FROM bronze_clients WHERE segment = \'PROFESSIONNEL\'', checkColNames: true },
+      after: 'Tu maîtrises les dictionnaires Python appliqués aux DataFrames ! Sur un vrai projet Databricks, on range ces dictionnaires dans un fichier de configuration afin de faire évoluer les règles sans toucher au moteur PySpark.',
+      py: 'from pyspark.sql import functions as F\n\ndefauts_null = {"email": "pro_sans_email@lanterne.fr"}\nrenommages = {"client_id": "id_client"}\ndf = (spark.table("bronze_clients")\n    .select("client_id", "nom", "email", "segment")\n    .filter(F.col("segment") == "PROFESSIONNEL")\n    .withColumn("nom", F.upper(F.trim("nom")))\n    .dropDuplicates()\n    .fillna(defauts_null)\n    .withColumnsRenamed(renommages))\ndisplay(df)'
+    },
+    {
+      id: 'p4', group: 'python', xp: 30, title: 'Python 4 · Fonctions pures (def), .transform() et tests assert',
+      brief: 'Dernier palier de l\'École Python Data — et le plus important pour l\'industrialisation (Module 11) !<br>Au lieu d\'écrire du code en vrac dans un notebook, on écrit une <strong>fonction Python pure</strong> avec <code>def</code> qui prend un DataFrame en entrée et renvoie le DataFrame transformé avec <code>return</code>. On peut alors l\'enchaîner élégamment avec <code>df.transform(ma_fonction)</code> et la tester automatiquement avec <strong><code>assert condition, "message"</code></strong> !<br><strong>Ta mission :</strong> Utilise la fonction <code>qualifier_comptes(df, devise_locale="EUR")</code> qui sélectionne <code>compte_id, client_id, type_compte, devise_ref</code> et ajoute la colonne booléenne <code>est_euro</code> (<code>F.col("devise_ref") == devise_locale</code>), applique-la à <code>bronze_comptes</code> et valide le contrat avec un test unitaire <code>assert resultat.count() == 87</code>.',
+      starter: 'SELECT compte_id, client_id, type_compte, devise_ref,\n  (devise_ref = \'EUR\') AS est_euro\nFROM bronze_comptes;\n',
+      pyStarter: 'from pyspark.sql import functions as F\n\n# 1. Fonction Python pure (réutilisable et testable avec pytest)\ndef qualifier_comptes(df, devise_locale="EUR"):\n    return (df\n        .select("compte_id", "client_id", "type_compte", "devise_ref")\n        .withColumn("est_euro", F.col("devise_ref") == devise_locale)\n    )\n\n# 2. Application via .transform()\nresultat = spark.table("bronze_comptes").transform(qualifier_comptes)\n\n# 3. Test unitaire Python (assert) : vérifie que les 87 comptes sont présents\nassert resultat.count() == 87, "Le nombre de comptes doit être égal à 87"\n\ndisplay(resultat)\n',
+      hints: [
+        'En Python, <code>def nom_fonction(param1, param2="defaut"):</code> définit une fonction, et le bloc indenté se termine par <code>return ...</code>.',
+        'L\'instruction <code>assert condition, "message d\'erreur"</code> lève une <code>AssertionError</code> et bloque le pipeline si la condition est fausse !',
+        'SELECT compte_id, client_id, type_compte, devise_ref, (devise_ref = \'EUR\') AS est_euro FROM bronze_comptes;'
+      ],
+      requireAssert: true,
+      expect: { sql: 'SELECT compte_id, client_id, type_compte, devise_ref, (devise_ref = \'EUR\') AS est_euro FROM bronze_comptes' },
+      after: 'Bravo ! Tu viens d\'exécuter une vraie fonction Python pure validée par <code>assert</code> dans le navigateur. Tu as maintenant tout le bagage Python nécessaire (variables, f-strings, listes, boucles <code>for</code>, dictionnaires, fonctions <code>def</code> et tests <code>assert</code>) pour briller dans l\'École Spark & PySpark !',
+      py: 'from pyspark.sql import functions as F\n\ndef qualifier_comptes(df, devise_locale="EUR"):\n    return (df\n        .select("compte_id", "client_id", "type_compte", "devise_ref")\n        .withColumn("est_euro", F.col("devise_ref") == devise_locale))\n\nresultat = spark.table("bronze_comptes").transform(qualifier_comptes)\nassert resultat.count() == 87, "Le nombre de comptes doit être égal à 87"\ndisplay(resultat)'
+    },
+
+    /* ==================== ÉTAGE 2 : ÉCOLE SPARK & PYSPARK (S1 à S10) ==================== */
+    {
+      id: 's1', group: 'spark', xp: 15, title: 'Spark 1 · Lire et choisir ses colonnes (.select)',
+      brief: '<strong>Bienvenue dans l\'École Spark & PySpark !</strong> On part de zéro sur l\'API DataFrame, geste par geste.<br>En PySpark, <code>spark.table("bronze_agences")</code> pointe vers la table (comme <code>FROM</code> en SQL) et <code>.select("col1", "col2")</code> choisit les colonnes. Tant que tu n\'appelles pas une <em>action</em> comme <code>display(df)</code>, Spark ne calcule rien (évaluation paresseuse).<br><strong>Ta mission :</strong> Affiche uniquement les colonnes <code>agence_id</code> et <code>nom</code> de la table <code>bronze_agences</code>.',
       starter: 'SELECT agence_id, nom FROM bronze_agences;\n',
       pyStarter: '# 1. Pointer vers la table bronze_agences (aucun calcul n\'est lancé ici)\ndf = spark.table("bronze_agences")\n\n# 2. Choisir uniquement les colonnes "agence_id" et "nom"\nresultat = df.select("agence_id", "nom")\n\n# 3. Déclencher l\'action pour afficher le résultat\ndisplay(resultat)\n',
       hints: [
@@ -70,11 +130,11 @@ INSERT INTO ref.silver_j3 SELECT a.* FROM ref.lot_3j a WHERE NOT EXISTS (SELECT 
         'SELECT agence_id, nom FROM bronze_agences;'
       ],
       expect: { sql: 'SELECT agence_id, nom FROM bronze_agences' },
-      after: 'Premier geste acquis ! Regarde sous le tableau de résultat : le bloc « Plan d\'exécution Spark » te montre l\'opérateur <code>Project [agence_id, nom]</code> posé au-dessus de <code>FileScan parquet</code>.',
+      after: 'Premier geste acquis ! Regarde sous le tableau de résultat : le graphe physique Catalyst te montre l\'opérateur <code>Project [agence_id, nom]</code> posé au-dessus de <code>FileScan parquet</code>, avec le badge « 1 Stage · Zéro Shuffle ».',
       py: 'df = spark.table("bronze_agences")\nresultat = df.select("agence_id", "nom")\ndisplay(resultat)'
     },
     {
-      id: 's2', group: 'spark', xp: 15, title: 'Palier 2 · Filtrer des lignes (.filter et F.col)',
+      id: 's2', group: 'spark', xp: 15, title: 'Spark 2 · Filtrer des lignes (.filter et F.col)',
       brief: 'Pour filtrer des lignes (le <code>WHERE</code> du SQL), on appelle <code>.filter(...)</code> sur le DataFrame.<br>En PySpark, dès qu\'on compare une colonne à une valeur, on importe la boîte à outils <code>from pyspark.sql import functions as F</code> et on écrit <code>F.col("region") == "Bretagne"</code> (attention au double égal <code>==</code> de Python !).<br><strong>Ta mission :</strong> Filtre <code>bronze_agences</code> pour ne garder que les 3 agences où <code>region</code> vaut <code>\'Bretagne\'</code>.',
       starter: 'SELECT * FROM bronze_agences WHERE region = \'Bretagne\';\n',
       pyStarter: 'from pyspark.sql import functions as F\n\ndf = spark.table("bronze_agences")\n\n# Filtre pour ne garder que la région "Bretagne"\nbretagne = df.filter(F.col("region") == "Bretagne")\n\ndisplay(bretagne)\n',
@@ -88,10 +148,10 @@ INSERT INTO ref.silver_j3 SELECT a.* FROM ref.lot_3j a WHERE NOT EXISTS (SELECT 
       py: 'from pyspark.sql import functions as F\n\nbretagne = spark.table("bronze_agences").filter(F.col("region") == "Bretagne")\ndisplay(bretagne)'
     },
     {
-      id: 's3', group: 'spark', xp: 20, title: 'Palier 3 · Créer ou transformer une colonne (.withColumn)',
+      id: 's3', group: 'spark', xp: 20, title: 'Spark 3 · Créer ou transformer une colonne (.withColumn)',
       brief: 'La méthode <code>.withColumn("nom_col", expression)</code> est le couteau suisse de PySpark :<br>• Si <code>"nom_col"</code> n\'existe pas encore, elle <strong>ajoute</strong> une nouvelle colonne.<br>• Si <code>"nom_col"</code> existe déjà, elle <strong>remplace</strong> la colonne sur place !<br><strong>Ta mission :</strong> À partir de <code>bronze_agences</code>, sélectionne <code>agence_id</code> et <code>nom</code>, puis ajoute une 3e colonne <code>nom_maj</code> contenant le nom en majuscules grâce à <code>F.upper(F.col("nom"))</code>.',
       starter: 'SELECT agence_id, nom, upper(nom) AS nom_maj FROM bronze_agences;\n',
-      pyStarter: 'from pyspark.sql import functions as F\n\ndf = (spark.table("bronze_agences")\n  .select("agence_id", "nom")\n  # Ajoute la colonne "nom_maj" en majuscules avec .withColumn(...)\n  .withColumn("nom_maj", F.upper(F.col("nom")))\n)\n\ndisplay(df)\n',
+      pyStarter: 'from pyspark.sql import functions as F\n\ndf = (spark.table("bronze_agences")\n    .select("agence_id", "nom")\n    # Ajoute la colonne "nom_maj" en majuscules avec .withColumn(...)\n    .withColumn("nom_maj", F.upper(F.col("nom")))\n)\n\ndisplay(df)\n',
       hints: [
         'En mettant des parenthèses autour de toute l\'expression <code>df = (spark.table(...) ... )</code>, tu peux chaîner une méthode par ligne très proprement sans antislash.',
         'Utilise <code>.withColumn("nom_maj", F.upper(F.col("nom")))</code>.',
@@ -99,13 +159,13 @@ INSERT INTO ref.silver_j3 SELECT a.* FROM ref.lot_3j a WHERE NOT EXISTS (SELECT 
       ],
       expect: { sql: 'SELECT agence_id, nom, upper(nom) AS nom_maj FROM bronze_agences' },
       after: 'Tu maîtrises <code>.withColumn()</code> ! C\'est avec elle qu\'on nettoie les textes (<code>F.upper(F.trim("nom"))</code>) et qu\'on extrait les dates (<code>F.to_date(...)</code>).',
-      py: 'from pyspark.sql import functions as F\n\ndf = (spark.table("bronze_agences")\n  .select("agence_id", "nom")\n  .withColumn("nom_maj", F.upper(F.col("nom"))))\ndisplay(df)'
+      py: 'from pyspark.sql import functions as F\n\ndf = (spark.table("bronze_agences")\n    .select("agence_id", "nom")\n    .withColumn("nom_maj", F.upper(F.col("nom"))))\ndisplay(df)'
     },
     {
-      id: 's4', group: 'spark', xp: 25, title: 'Palier 4 · Conditionner avec F.when().otherwise()',
-      brief: 'Comment traduire le <code>CASE WHEN … THEN … ELSE … END</code> du SQL en PySpark ?<br>Jamais avec une boucle Python ! On utilise <code>F.when(condition, valeur).otherwise(valeur_sinon)</code>, qui s\'exécute en parallèle sur toutes les partitions.<br><strong>Ta mission :</strong> À partir de <code>bronze_comptes</code>, sélectionne <code>compte_id</code> et <code>devise_ref</code>, puis ajoute une colonne <code>zone</code> qui vaut <code>\'ZONE_EURO\'</code> si <code>devise_ref == \'EUR\'</code>, et <code>\'DEVISE_ETRANGERE\'</code> sinon.',
+      id: 's4', group: 'spark', xp: 25, title: 'Spark 4 · Conditionner avec F.when().otherwise()',
+      brief: 'Comment traduire le <code>CASE WHEN … THEN … ELSE … END</code> du SQL en PySpark ?<br>Jamais avec une boucle Python sur les lignes ! On utilise <code>F.when(condition, valeur).otherwise(valeur_sinon)</code>, qui s\'exécute en C++ vectorisé (Photon) sur toutes les partitions.<br><strong>Ta mission :</strong> À partir de <code>bronze_comptes</code>, sélectionne <code>compte_id</code> et <code>devise_ref</code>, puis ajoute une colonne <code>zone</code> qui vaut <code>\'ZONE_EURO\'</code> si <code>devise_ref == \'EUR\'</code>, et <code>\'DEVISE_ETRANGERE\'</code> sinon.',
       starter: 'SELECT compte_id, devise_ref,\n  CASE WHEN devise_ref = \'EUR\' THEN \'ZONE_EURO\' ELSE \'DEVISE_ETRANGERE\' END AS zone\nFROM bronze_comptes;\n',
-      pyStarter: 'from pyspark.sql import functions as F\n\ndf = (spark.table("bronze_comptes")\n  .select("compte_id", "devise_ref")\n  .withColumn("zone",\n      F.when(F.col("devise_ref") == "EUR", "ZONE_EURO")\n       .otherwise("DEVISE_ETRANGERE"))\n)\n\ndisplay(df)\n',
+      pyStarter: 'from pyspark.sql import functions as F\n\ndf = (spark.table("bronze_comptes")\n    .select("compte_id", "devise_ref")\n    .withColumn("zone",\n        F.when(F.col("devise_ref") == "EUR", "ZONE_EURO")\n         .otherwise("DEVISE_ETRANGERE"))\n)\n\ndisplay(df)\n',
       hints: [
         'On peut enchaîner plusieurs <code>.when(cond1, val1).when(cond2, val2).otherwise(defaut)</code> à la suite !',
         'Vérifie l\'orthographe exacte : <code>\'ZONE_EURO\'</code> et <code>\'DEVISE_ETRANGERE\'</code>.',
@@ -113,36 +173,94 @@ INSERT INTO ref.silver_j3 SELECT a.* FROM ref.lot_3j a WHERE NOT EXISTS (SELECT 
       ],
       expect: { sql: 'SELECT compte_id, devise_ref, CASE WHEN devise_ref = \'EUR\' THEN \'ZONE_EURO\' ELSE \'DEVISE_ETRANGERE\' END AS zone FROM bronze_comptes' },
       after: 'Exactement comme un <code>CASE WHEN</code> ! Dans la mission Silver (M3), tu enchaîneras quatre <code>.when()</code> successifs pour qualifier les 4 motifs de rejet.',
-      py: 'from pyspark.sql import functions as F\n\ndf = (spark.table("bronze_comptes")\n  .select("compte_id", "devise_ref")\n  .withColumn("zone", F.when(F.col("devise_ref") == "EUR", "ZONE_EURO").otherwise("DEVISE_ETRANGERE")))\ndisplay(df)'
+      py: 'from pyspark.sql import functions as F\n\ndf = (spark.table("bronze_comptes")\n    .select("compte_id", "devise_ref")\n    .withColumn("zone", F.when(F.col("devise_ref") == "EUR", "ZONE_EURO").otherwise("DEVISE_ETRANGERE")))\ndisplay(df)'
     },
     {
-      id: 's5', group: 'spark', xp: 25, title: 'Palier 5 · Grouper, agréger et trier (.groupBy / .agg)',
+      id: 's5', group: 'spark', xp: 25, title: 'Spark 5 · Grouper, agréger et trier (.groupBy / .agg)',
       brief: 'Jusqu\'ici, chaque ligne se traitait seule sur sa machine (transformations <em>étroites</em>). Avec <code>.groupBy("type_compte")</code>, Spark doit rassembler les lignes de même type depuis tous les workers : c\'est le fameux <strong>shuffle</strong> (<code>Exchange</code> dans le plan) !<br>Après <code>.groupBy(...)</code>, on appelle <code>.agg(...)</code> en nommant chaque calcul avec <code>.alias("...")</code>, puis <code>.orderBy(F.desc("..."))</code> pour trier.<br><strong>Ta mission :</strong> Sur <code>bronze_comptes</code>, calcule le nombre de comptes par <code>type_compte</code> (colonnes <code>type_compte</code> et <code>nb_comptes</code>), trié du plus fréquent au moins fréquent.',
       starter: 'SELECT type_compte, count(*) AS nb_comptes\nFROM bronze_comptes\nGROUP BY type_compte\nORDER BY nb_comptes DESC;\n',
-      pyStarter: 'from pyspark.sql import functions as F\n\nstats = (spark.table("bronze_comptes")\n  .groupBy("type_compte")\n  .agg(F.count("*").alias("nb_comptes"))\n  .orderBy(F.desc("nb_comptes"))\n)\n\ndisplay(stats)\n',
+      pyStarter: 'from pyspark.sql import functions as F\n\nstats = (spark.table("bronze_comptes")\n    .groupBy("type_compte")\n    .agg(F.count("*").alias("nb_comptes"))\n    .orderBy(F.desc("nb_comptes"))\n)\n\ndisplay(stats)\n',
       hints: [
         '<code>.agg(F.count("*").alias("nb_comptes"))</code> calcule le nombre de lignes et renomme la colonne en <code>nb_comptes</code>.',
         '<code>.orderBy(F.desc("nb_comptes"))</code> trie par ordre décroissant.',
         'SELECT type_compte, count(*) AS nb_comptes FROM bronze_comptes GROUP BY type_compte ORDER BY nb_comptes DESC;'
       ],
       expect: { sql: 'SELECT type_compte, count(*) AS nb_comptes FROM bronze_comptes GROUP BY type_compte ORDER BY nb_comptes DESC', ordered: true },
-      after: 'Ouvre le bloc « Plan d\'exécution Spark » sous le résultat : tu vois apparaître <code>Exchange hashpartitioning(type_compte)</code> et <code>HashAggregate</code> ! C\'est la trace physique du shuffle.',
-      py: 'from pyspark.sql import functions as F\n\nstats = (spark.table("bronze_comptes")\n  .groupBy("type_compte")\n  .agg(F.count("*").alias("nb_comptes"))\n  .orderBy(F.desc("nb_comptes")))\ndisplay(stats)'
+      after: 'Regarde le graphe Catalyst sous le résultat : tu vois apparaître les badges rouges <code>⚡ Shuffle · Exchange hashpartitioning(type_compte)</code> et <code>🧮 Agg · HashAggregate</code> ! C\'est la trace physique du découpage en Stages.',
+      py: 'from pyspark.sql import functions as F\n\nstats = (spark.table("bronze_comptes")\n    .groupBy("type_compte")\n    .agg(F.count("*").alias("nb_comptes"))\n    .orderBy(F.desc("nb_comptes")))\ndisplay(stats)'
     },
     {
-      id: 's6', group: 'spark', xp: 30, title: 'Palier 6 · Joindre deux tables (.join)',
-      brief: 'Dernier palier avant le grand bain ! Pour joindre deux DataFrames qui partagent le même nom de colonne de clé (ex. <code>"compte_id"</code>), écris simplement :<br><code>tx.join(cpt, "compte_id")</code> (jointure interne par défaut, ou passe <code>"left"</code> / <code>"left_anti"</code> en 3e argument).<br><strong>Ta mission :</strong> Joins <code>bronze_transactions</code> et <code>bronze_comptes</code> sur <code>"compte_id"</code>, puis calcule par <code>type_compte</code> le nombre d\'opérations (<code>operations</code>), trié par <code>operations</code> décroissant.',
+      id: 's6', group: 'spark', xp: 25, title: 'Spark 6 · Joindre deux tables (.join)',
+      brief: 'Pour joindre deux DataFrames qui partagent le même nom de colonne de clé (ex. <code>"compte_id"</code>), écris simplement :<br><code>tx.join(cpt, "compte_id")</code> (jointure interne par défaut, ou passe <code>"left"</code> / <code>"left_anti"</code> en 3e argument).<br><strong>Ta mission :</strong> Joins <code>bronze_transactions</code> et <code>bronze_comptes</code> sur <code>"compte_id"</code>, puis calcule par <code>type_compte</code> le nombre d\'opérations (<code>operations</code>), trié par <code>operations</code> décroissant.',
       starter: 'SELECT c.type_compte, count(*) AS operations\nFROM bronze_transactions t\nJOIN bronze_comptes c USING (compte_id)\nGROUP BY c.type_compte\nORDER BY operations DESC;\n',
-      pyStarter: 'from pyspark.sql import functions as F\n\ntx = spark.table("bronze_transactions")\ncpt = spark.table("bronze_comptes")\n\npar_type = (tx\n  .join(cpt, "compte_id")\n  .groupBy("type_compte")\n  .agg(F.count("*").alias("operations"))\n  .orderBy(F.desc("operations"))\n)\n\ndisplay(par_type)\n',
+      pyStarter: 'from pyspark.sql import functions as F\n\ntx = spark.table("bronze_transactions")\ncpt = spark.table("bronze_comptes")\n\npar_type = (tx\n    .join(cpt, "compte_id")\n    .groupBy("type_compte")\n    .agg(F.count("*").alias("operations"))\n    .orderBy(F.desc("operations"))\n)\n\ndisplay(par_type)\n',
       hints: [
         'Passe <code>"compte_id"</code> en second argument de <code>.join(cpt, "compte_id")</code> : cela évite d\'avoir deux colonnes <code>compte_id</code> ambiguës.',
         'Enchaîne ensuite <code>.groupBy("type_compte").agg(F.count("*").alias("operations")).orderBy(F.desc("operations"))</code>.',
         'SELECT c.type_compte, count(*) AS operations FROM bronze_transactions t JOIN bronze_comptes c USING (compte_id) GROUP BY c.type_compte ORDER BY operations DESC;'
       ],
       expect: { sql: 'SELECT c.type_compte, count(*) AS operations FROM bronze_transactions t JOIN bronze_comptes c USING (compte_id) GROUP BY c.type_compte ORDER BY operations DESC', ordered: true },
-      after: 'Félicitations : tu as validé les 6 paliers de l\'École PySpark (<code>.select</code>, <code>.filter</code>, <code>.withColumn</code>, <code>F.when</code>, <code>.groupBy().agg()</code> et <code>.join</code>) ! Tu as maintenant toutes les cartes en main pour attaquer le pipeline de la Banque Lanterne ci-dessous.',
-      py: 'from pyspark.sql import functions as F\n\npar_type = (spark.table("bronze_transactions")\n  .join(spark.table("bronze_comptes"), "compte_id")\n  .groupBy("type_compte")\n  .agg(F.count("*").alias("operations"))\n  .orderBy(F.desc("operations")))\ndisplay(par_type)'
+      after: 'Les 6 gestes de base sont acquis ! Passons maintenant aux 4 paliers avancés (S7 à S10) qui font la différence sur un vrai projet client : gestion des <code>NULL</code>, découpage de texte, calculs de dates, fenêtres <code>Window</code> et <code>Broadcast Join</code>.',
+      py: 'from pyspark.sql import functions as F\n\npar_type = (spark.table("bronze_transactions")\n    .join(spark.table("bronze_comptes"), "compte_id")\n    .groupBy("type_compte")\n    .agg(F.count("*").alias("operations"))\n    .orderBy(F.desc("operations")))\ndisplay(par_type)'
     },
+    {
+      id: 's7', group: 'spark', xp: 30, title: 'Spark 7 · Chasse aux NULL (F.coalesce) et extraction de texte (F.substring)',
+      brief: 'En mission, les fichiers sources ont toujours des trous (<code>NULL</code>) et des codes à découper :<br>• <strong><code>F.coalesce(col1, col2, ...)</code></strong> renvoie la première valeur non nulle (parfait pour fournir une valeur de repli calculée ou constante).<br>• <strong><code>F.substring(col, debut, longueur)</code></strong> extrait une sous-chaîne (en commençant à la position <code>1</code>, comme en SQL).<br><strong>Ta mission :</strong> À partir de <code>bronze_clients</code> dédoublonné (<code>.dropDuplicates()</code>), filtre sur <code>ville == "Lyon"</code> et produis 4 colonnes : <code>client_id</code>, <code>nom</code> nettoyé (<code>F.upper(F.trim("nom"))</code>), <code>departement</code> (les 2 premiers caractères de <code>code_postal</code>) et <code>email_contact</code> (qui vaut <code>email</code>, ou <code>"contact@lanterne.fr"</code> s\'il est nul), trié par <code>client_id</code>.',
+      starter: 'SELECT client_id,\n  upper(trim(nom)) AS nom,\n  substring(code_postal, 1, 2) AS departement,\n  coalesce(email, \'contact@lanterne.fr\') AS email_contact\nFROM (SELECT DISTINCT * FROM bronze_clients)\nWHERE ville = \'Lyon\'\nORDER BY client_id;\n',
+      pyStarter: 'from pyspark.sql import functions as F\n\nlyon = (spark.table("bronze_clients")\n    .dropDuplicates()\n    .filter(F.col("ville") == "Lyon")\n    .select(\n        "client_id",\n        F.upper(F.trim("nom")).alias("nom"),\n        F.substring("code_postal", 1, 2).alias("departement"),\n        F.coalesce(F.col("email"), F.lit("contact@lanterne.fr")).alias("email_contact")\n    )\n    .orderBy("client_id")\n)\n\ndisplay(lyon)\n',
+      hints: [
+        'Dans <code>F.coalesce(F.col("email"), F.lit("contact@lanterne.fr"))</code>, pense à entourer la chaîne constante de <code>F.lit("...")</code> sinon Spark chercherait une colonne portant ce nom !',
+        '<code>F.substring("code_postal", 1, 2)</code> extrait les 2 premiers chiffres du code postal (ex. <code>"69"</code> pour Lyon).',
+        'SELECT client_id, upper(trim(nom)) AS nom, substring(code_postal, 1, 2) AS departement, coalesce(email, \'contact@lanterne.fr\') AS email_contact FROM (SELECT DISTINCT * FROM bronze_clients) WHERE ville = \'Lyon\' ORDER BY client_id;'
+      ],
+      expect: { sql: 'SELECT client_id, upper(trim(nom)) AS nom, substring(code_postal, 1, 2) AS departement, coalesce(email, \'contact@lanterne.fr\') AS email_contact FROM (SELECT DISTINCT * FROM bronze_clients) WHERE ville = \'Lyon\' ORDER BY client_id', ordered: true },
+      after: 'Bien joué ! Retiens le piège classique de <code>F.coalesce</code> et <code>F.concat</code> en PySpark : tout texte constant passé à une fonction Spark doit être enveloppé dans <code>F.lit("texte")</code> pour ne pas être confondu avec un nom de colonne.',
+      py: 'from pyspark.sql import functions as F\n\nlyon = (spark.table("bronze_clients")\n    .dropDuplicates()\n    .filter(F.col("ville") == "Lyon")\n    .select(\n        "client_id",\n        F.upper(F.trim("nom")).alias("nom"),\n        F.substring("code_postal", 1, 2).alias("departement"),\n        F.coalesce(F.col("email"), F.lit("contact@lanterne.fr")).alias("email_contact"))\n    .orderBy("client_id"))\ndisplay(lyon)'
+    },
+    {
+      id: 's8', group: 'spark', xp: 30, title: 'Spark 8 · Calculs de dates et ancienneté (F.datediff)',
+      brief: 'Manipuler des dates sans jamais convertir en Python : c\'est le rôle des fonctions temporelles natives de Spark (<code>F.to_date</code>, <code>F.year</code>, <code>F.month</code>, <code>F.datediff(fin, debut)</code>, <code>F.date_add</code>).<br><code>F.datediff(F.lit("2026-07-01"), F.col("date_ouverture"))</code> calcule le nombre de jours écoulés entre <code>date_ouverture</code> et le 1er juillet 2026.<br><strong>Ta mission :</strong> Sur <code>bronze_comptes</code>, calcule l\'ancienneté en jours de chaque compte au <code>"2026-07-01"</code>, puis agrège par <code>type_compte</code> pour obtenir <code>nb_comptes</code> et <code>anciennete_moy_jours</code> (moyenne arrondie à l\'entier avec <code>F.round(..., 0)</code>), trié par <code>anciennete_moy_jours</code> décroissant.',
+      starter: 'SELECT type_compte,\n  count(*) AS nb_comptes,\n  round(avg(date_diff(\'day\', CAST(date_ouverture AS DATE), DATE \'2026-07-01\')), 0) AS anciennete_moy_jours\nFROM bronze_comptes\nGROUP BY type_compte\nORDER BY anciennete_moy_jours DESC;\n',
+      pyStarter: 'from pyspark.sql import functions as F\n\nanciennete = (spark.table("bronze_comptes")\n    .withColumn("jours", F.datediff(F.lit("2026-07-01"), F.col("date_ouverture")))\n    .groupBy("type_compte")\n    .agg(\n        F.count("*").alias("nb_comptes"),\n        F.round(F.avg("jours"), 0).alias("anciennete_moy_jours")\n    )\n    .orderBy(F.desc("anciennete_moy_jours"))\n)\n\ndisplay(anciennete)\n',
+      hints: [
+        'Attention à l\'ordre des arguments dans PySpark : <code>F.datediff(date_fin, date_debut)</code> renvoie <code>date_fin - date_debut</code> en jours.',
+        'Utilise <code>F.round(F.avg("jours"), 0).alias("anciennete_moy_jours")</code> dans le <code>.agg(...)</code>.',
+        'SELECT type_compte, count(*) AS nb_comptes, round(avg(date_diff(\'day\', CAST(date_ouverture AS DATE), DATE \'2026-07-01\')), 0) AS anciennete_moy_jours FROM bronze_comptes GROUP BY type_compte ORDER BY anciennete_moy_jours DESC;'
+      ],
+      expect: { sql: 'SELECT type_compte, count(*) AS nb_comptes, round(avg(date_diff(\'day\', CAST(date_ouverture AS DATE), DATE \'2026-07-01\')), 0) AS anciennete_moy_jours FROM bronze_comptes GROUP BY type_compte ORDER BY anciennete_moy_jours DESC', ordered: true },
+      after: 'Tu sais calculer des durées et anciennetés en distribué ! C\'est une brique essentielle pour construire des features ML (ancienneté client, récence de la dernière opération) ou des règles métier.',
+      py: 'from pyspark.sql import functions as F\n\nanciennete = (spark.table("bronze_comptes")\n    .withColumn("jours", F.datediff(F.lit("2026-07-01"), F.col("date_ouverture")))\n    .groupBy("type_compte")\n    .agg(F.count("*").alias("nb_comptes"), F.round(F.avg("jours"), 0).alias("anciennete_moy_jours"))\n    .orderBy(F.desc("anciennete_moy_jours")))\ndisplay(anciennete)'
+    },
+    {
+      id: 's9', group: 'spark', xp: 35, title: 'Spark 9 · Fenêtres analytiques (Window.partitionBy)',
+      brief: 'Quelle est la différence fondamentale entre <code>.groupBy("region")</code> et <code>Window.partitionBy("region")</code> ?<br>• <code>.groupBy("region")</code> écrase les lignes pour n\'en garder qu\'une par région.<br>• <code>Window.partitionBy("region").orderBy("nom")</code> conserve chaque ligne intacte et permet de calculer un rang (<code>F.row_number().over(w)</code>) à l\'intérieur de chaque région !<br><strong>Ta mission :</strong> À partir de <code>bronze_agences</code>, numérote les agences de chaque <code>region</code> par ordre alphabétique de <code>nom</code> (<code>rang</code>), filtre uniquement la 1re agence de chaque région (<code>rang == 1</code>), et sélectionne <code>region, agence_id, nom</code>, trié par <code>region</code> croissant.',
+      starter: 'SELECT region, agence_id, nom\nFROM bronze_agences\nQUALIFY row_number() OVER (PARTITION BY region ORDER BY nom) = 1\nORDER BY region;\n',
+      pyStarter: 'from pyspark.sql import Window, functions as F\n\n# 1. Définir la fenêtre : découper par "region", trier par "nom"\nw = Window.partitionBy("region").orderBy("nom")\n\n# 2. Numéroter chaque ligne dans sa fenêtre et garder la n°1\npremieres = (spark.table("bronze_agences")\n    .withColumn("rang", F.row_number().over(w))\n    .filter(F.col("rang") == 1)\n    .select("region", "agence_id", "nom")\n    .orderBy("region")\n)\n\ndisplay(premieres)\n',
+      hints: [
+        'Importe toujours <code>Window</code> depuis <code>pyspark.sql</code> : <code>from pyspark.sql import Window, functions as F</code>.',
+        '<code>F.row_number().over(w)</code> attribue 1, 2, 3… à chaque ligne au sein de sa partition <code>region</code>.',
+        'SELECT region, agence_id, nom FROM bronze_agences QUALIFY row_number() OVER (PARTITION BY region ORDER BY nom) = 1 ORDER BY region;'
+      ],
+      expect: { sql: 'SELECT region, agence_id, nom FROM bronze_agences QUALIFY row_number() OVER (PARTITION BY region ORDER BY nom) = 1 ORDER BY region', ordered: true },
+      after: 'Ce pattern <code>Window.partitionBy(cle).orderBy(...)</code> + <code>F.row_number().over(w) == 1</code> est le pattern le plus utilisé de tout Spark : c\'est lui qui permet de dédoublonner proprement une table sur sa clé primaire en gardant l\'enregistrement le plus récent (comme tu le feras à la mission M8) !',
+      py: 'from pyspark.sql import Window, functions as F\n\nw = Window.partitionBy("region").orderBy("nom")\npremieres = (spark.table("bronze_agences")\n    .withColumn("rang", F.row_number().over(w))\n    .filter(F.col("rang") == 1)\n    .select("region", "agence_id", "nom")\n    .orderBy("region"))\ndisplay(premieres)'
+    },
+    {
+      id: 's10', group: 'spark', xp: 40, title: 'Spark 10 · Le Boss PySpark : Multi-Join et F.broadcast()',
+      brief: 'Pour valider ton diplôme de l\'École Spark & PySpark, combinons tout sur un cas d\'optimisation réel !<br>Tu dois croiser 4 tables : <code>bronze_transactions</code> → <code>bronze_comptes</code> → <code>bronze_clients</code> → <code>bronze_agences</code>. Comme <code>bronze_agences</code> ne compte que 24 lignes, l\'envelopper dans <strong><code>F.broadcast(...)</code></strong> ordonne à Spark d\'envoyer cette petite table sur chaque worker en mémoire : la jointure devient un <strong><code>BroadcastHashJoin</code></strong> ultra-rapide sans Shuffle de la grande table !<br><strong>Ta mission :</strong> Sur les transactions dédoublonnées où <code>montant != 0</code> et <code>horodatage &lt; "2026-07-01"</code>, joins les comptes, les clients dédoublonnés et les agences en broadcast, puis calcule par <code>region</code> le nombre d\'opérations (<code>operations</code>) et le ticket moyen absolu (<code>ticket_moyen = F.round(F.avg(F.abs("montant")), 2)</code>), trié par <code>operations</code> décroissant.',
+      starter: 'WITH tx AS (\n  SELECT DISTINCT * FROM bronze_transactions\n  WHERE montant <> 0 AND horodatage < TIMESTAMP \'2026-07-01\'\n),\ncl AS (SELECT DISTINCT * FROM bronze_clients)\nSELECT a.region,\n  count(*) AS operations,\n  round(avg(abs(tx.montant)), 2) AS ticket_moyen\nFROM tx\nJOIN bronze_comptes co USING (compte_id)\nJOIN cl USING (client_id)\nJOIN bronze_agences a USING (agence_id)\nGROUP BY a.region\nORDER BY operations DESC;\n',
+      pyStarter: 'from pyspark.sql import functions as F\n\ntx = (spark.table("bronze_transactions")\n    .dropDuplicates()\n    .filter((F.col("montant") != 0) & (F.col("horodatage") < "2026-07-01")))\n\ncpt = spark.table("bronze_comptes")\ncli = spark.table("bronze_clients").dropDuplicates()\nag = spark.table("bronze_agences")\n\n# Joins les 4 tables en diffusant "ag" avec F.broadcast(ag), puis agrège par "region"\nbilan_regions = (tx\n    .join(cpt, "compte_id")\n    .join(cli, "client_id")\n    .join(F.broadcast(ag), "agence_id")\n    .groupBy("region")\n    .agg(\n        F.count("*").alias("operations"),\n        F.round(F.avg(F.abs("montant")), 2).alias("ticket_moyen")\n    )\n    .orderBy(F.desc("operations"))\n)\n\ndisplay(bilan_regions)\n',
+      hints: [
+        'Observe dans le graphe Catalyst sous le tableau la différence entre <code>SortMergeJoin</code> et <code>🚀 Broadcast · BroadcastHashJoin</code> !',
+        'Utilise <code>F.round(F.avg(F.abs("montant")), 2).alias("ticket_moyen")</code> pour le ticket moyen en valeur absolue.',
+        'WITH tx AS (SELECT DISTINCT * FROM bronze_transactions WHERE montant <> 0 AND horodatage < TIMESTAMP \'2026-07-01\'), cl AS (SELECT DISTINCT * FROM bronze_clients) SELECT a.region, count(*) AS operations, round(avg(abs(tx.montant)), 2) AS ticket_moyen FROM tx JOIN bronze_comptes co USING (compte_id) JOIN cl USING (client_id) JOIN bronze_agences a USING (agence_id) GROUP BY a.region ORDER BY operations DESC;'
+      ],
+      expect: { sql: 'WITH tx AS (SELECT DISTINCT * FROM bronze_transactions WHERE montant <> 0 AND horodatage < TIMESTAMP \'2026-07-01\'), cl AS (SELECT DISTINCT * FROM bronze_clients) SELECT a.region, count(*) AS operations, round(avg(abs(tx.montant)), 2) AS ticket_moyen FROM tx JOIN bronze_comptes co USING (compte_id) JOIN cl USING (client_id) JOIN bronze_agences a USING (agence_id) GROUP BY a.region ORDER BY operations DESC', ordered: true },
+      after: 'Félicitations : tu as validé les 10 paliers de l\'École Spark & PySpark ! Regarde bien l\'opérateur <code>🚀 Broadcast · BroadcastHashJoin [agence_id]</code> dans le graphe Catalyst. Tu es maintenant armé à 100 % pour construire le pipeline complet de la Banque Lanterne ci-dessous !',
+      py: 'from pyspark.sql import functions as F\n\ntx = (spark.table("bronze_transactions")\n    .dropDuplicates()\n    .filter((F.col("montant") != 0) & (F.col("horodatage") < "2026-07-01")))\n\nbilan_regions = (tx\n    .join(spark.table("bronze_comptes"), "compte_id")\n    .join(spark.table("bronze_clients").dropDuplicates(), "client_id")\n    .join(F.broadcast(spark.table("bronze_agences")), "agence_id")\n    .groupBy("region")\n    .agg(F.count("*").alias("operations"), F.round(F.avg(F.abs("montant")), 2).alias("ticket_moyen"))\n    .orderBy(F.desc("operations")))\ndisplay(bilan_regions)'
+    },
+
+    /* ==================== ÉTAGE 3 : PIPELINE BANQUE LANTERNE (M0 à M9) ==================== */
     {
       id: 'm0', xp: 10, title: 'Bonjour, Lanterne',
       brief: 'La Banque Lanterne (fictive) vous confie ses fichiers. La plateforme les a déjà lus : les tables <code>bronze_*</code> sont dans le panneau de gauche. Première question : combien de lignes compte <code>bronze_transactions</code> ?',
@@ -303,7 +421,7 @@ INSERT INTO ref.silver_j3 SELECT a.* FROM ref.lot_3j a WHERE NOT EXISTS (SELECT 
         answer: 1, xp: 10,
         explain: 'Les Alertes Databricks SQL s\'exécutent sur un SQL Warehouse. Avec un SQL Warehouse Serverless, le démarrage est quasi instantané, la requête d\'alerte tourne en 2 secondes et la facturation s\'arrête aussitôt.'
       },
-      after: 'Le tour de la Banque Lanterne est complet : tu as audité le brut, nettoyé et réconcilié la Silver, construit la Gold en euros, absorbé des lots incrémentaux idempotents et posé la sonde d\'alerte SQL.',
+      after: 'Le tour de la Banque Lanterne est complet : tu as maîtrisé l\'École Python Data (P1–P4), l\'École Spark & PySpark (S1–S10) et le pipeline complet de bout en bout (M0–M9) !',
       py: 'from pyspark.sql import functions as F\n\norphelins = (spark.table("silver_transactions").alias("t")\n  .join(spark.table("bronze_comptes").alias("co"), "compte_id")\n  .join(spark.table("silver_clients").alias("cl"), "client_id", "left_anti")\n  .groupBy("compte_id", "client_id")\n  .agg(F.count("*").alias("operations"),\n       F.round(F.sum(F.abs("montant")), 2).alias("volume_eur"))\n  .orderBy(F.desc("operations")))\ndisplay(orphelins)'
     }
   ]

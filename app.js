@@ -41,7 +41,8 @@
     ['Z', 'Bilan bouclé', 'Silver, rejets et doublons réconciliés', () => labDone('m3')],
     ['I', 'Idempotent', 'Upsert rejouable sans dégât', () => labDone('m7')],
     ['K', 'Maître Lanterne', 'Lot de 3 jours et alerte SQL validés', () => labDone('m8') && labDone('m9')],
-    ['Y', 'Bilingue Spark', 'École PySpark (6 paliers) ou 3 missions validées en PySpark', () => ['s1', 's2', 's3', 's4', 's5', 's6'].every(labDone) || Object.keys((S.lab && S.lab.pyDone) || {}).length >= 3],
+    ['Y', 'Bilingue Spark', 'École PySpark (S1–S6) ou 3 missions validées en PySpark', () => ['s1', 's2', 's3', 's4', 's5', 's6'].every(labDone) || Object.keys((S.lab && S.lab.pyDone) || {}).length >= 3],
+    ['T', 'Trinité Python·Spark·DBX', 'École Python (P1–P4) et École Spark complète (S1–S10) validées', () => ['p1', 'p2', 'p3', 'p4'].every(labDone) && ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10'].every(labDone)],
     ['X', 'Certifiable', 'Examen blanc réussi à 70 %', () => !!(S.exam && S.exam.best >= 0.7)],
     ['N', 'Ceinture noire', '1 300 XP atteints', () => xp() >= 1300]
   ];
@@ -76,7 +77,7 @@
   }
 
   /* ---------- rail ---------- */
-  const TABS = [['', 'Accueil'], ['parcours', 'Parcours'], ['atelier', 'Simulateurs'], ['labo', 'Labo SQL'], ['examen', 'Examen blanc'], ['quiz', 'Quiz'], ['cartes', 'Flashcards'], ['labs', 'Labs Databricks'], ['memo', 'Mémo & Playbooks']];
+  const TABS = [['', 'Accueil'], ['parcours', 'Parcours'], ['atelier', 'Simulateurs'], ['labo', 'Académie Code'], ['examen', 'Examen blanc'], ['quiz', 'Quiz'], ['cartes', 'Flashcards'], ['labs', 'Labs Databricks'], ['memo', 'Mémo & Playbooks']];
   const ctx = {
     get S() { return S; }, save, confetti, reward, toast, profile,
     replaceS(s) { S = Object.assign(blank(), s); prev = { xp: xp(), belt: beltIdx(xp()), seals: earned() }; save(); render(); }
@@ -109,8 +110,8 @@
       '<div class="hstack between"><span class="fine">Progression sur ce parcours : <b>' + doneProofs + ' / ' + totProofs + ' preuves</b> (' + pct + ' %)</span>' +
       '<span class="fine">Modules ciblés : ' + t.mods.map(id => '<a href="#module-' + id + '">M' + num(mod(id)) + '</a>').join(' · ') + '</span></div>' +
       '<div class="bar"><i style="width:' + pct + '%"></i></div>' +
-      (t.steps ? '<div class="surprise" style="margin-top:4px"><b>Feuille de route Sprint Express (2 h chrono pour rattraper la formation)</b><div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">' +
-        t.steps.map((st, i) => '<label class="chk"><input type="checkbox" data-sprint="' + i + '"' + (S.sprint && S.sprint[i] ? ' checked' : '') + '><span>' + st + '</span></label>').join('') + '</div></div>' : '') +
+      (t.steps ? '<div class="surprise" style="margin-top:4px"><b>Feuille de route guidée (' + esc(t.label) + ')</b><div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">' +
+        t.steps.map((st, i) => '<label class="chk"><input type="checkbox" data-sprint="' + tk + '-' + i + '"' + (S.sprint && S.sprint[tk + '-' + i] ? ' checked' : '') + '><span>' + st + '</span></label>').join('') + '</div></div>' : '') +
       '</section>';
   }
 
@@ -143,7 +144,7 @@
         const isComp = !r.me && S.comparePeer === r.idx;
         return '<div class="lb-row' + (r.me ? ' me-row' : '') + '" style="grid-template-columns:24px minmax(0,1fr) auto auto">' +
           '<span class="rk">' + (i + 1) + '</span>' +
-          '<span class="nm">' + esc(r.n) + (r.me ? ' <small class="muted">(toi)</small>' : '') + ' <span class="pill">' + esc(trLabel) + '</span> <small class="fine">' + r.s + ' sceaux · ' + r.m + '/16 Labo · ' + r.sm + '/15 sim.</small></span>' +
+          '<span class="nm">' + esc(r.n) + (r.me ? ' <small class="muted">(toi)</small>' : '') + ' <span class="pill">' + esc(trLabel) + '</span> <small class="fine">' + r.s + ' sceaux · ' + r.m + '/24 Labo · ' + r.sm + '/17 sim.</small></span>' +
           (!r.me ? '<button class="small' + (isComp ? ' b-done' : '') + '" data-peer="' + r.idx + '">' + (isComp ? 'Radar affiché' : 'Comparer radar') + '</button>' : '<span></span>') +
           '<span class="pts">' + beltHtml(b) + r.xp + ' XP</span></div>';
       }).join('') + '</div></section>';
@@ -153,12 +154,12 @@
     const nextInTrack = trk.mods.map(mod).find(m => m && proofs(m).includes(false));
     const next = nextInTrack || D.modules.find(m => proofs(m).includes(false));
     return '<section class="panel hero"><div class="head" style="gap:14px">' +
-      '<span class="eyebrow">Keyrus · Databricks Lakehouse Dojo</span><h1>Monte en compétences sur Databricks, à ton rythme</h1>' +
-      '<p class="lead">Onze modules, quinze simulateurs interactifs, une École PySpark pas-à-pas + le pipeline de la Banque Lanterne dans ton navigateur, des playbooks d\'architecture client et des notebooks prêts pour Databricks Free Edition.</p>' +
+      '<span class="eyebrow">Keyrus · Databricks Lakehouse Dojo</span><h1>Maîtrise Python, Spark & Databricks, à ton rythme</h1>' +
+      '<p class="lead">Onze modules, dix-sept simulateurs interactifs, une Académie de code en 3 étages (École Python Data, École Spark & PySpark, Pipeline Banque Lanterne) exécutable dans ton navigateur, 8 playbooks client et un Starter Kit Asset Bundle.</p>' +
       beltHtml(b) +
       '<div class="xp">' + v + ' <small>XP · ceinture ' + BELTS[b][1] + (nx ? ' · encore ' + (nx[0] - v) + ' XP avant la ceinture ' + nx[1] : '') + '</small></div>' +
       '<div class="hstack">' + (next ? '<a class="btn b-primary" href="#module-' + next.id + '">' + (v ? 'Continuer (' + esc(trk.label) + ') : ' : 'Commencer : ') + esc(next.title) + '</a>' : '') +
-      '<a class="btn" href="#labo-s1">🌱 École PySpark (Débuter)</a><a class="btn" href="#labo-m0">🏦 Labo Banque Lanterne</a></div></div>' + radar() + '</section>' +
+      '<a class="btn" href="#labo-p1">🐍 1. École Python Data</a><a class="btn" href="#labo-s1">⚡ 2. École Spark</a><a class="btn" href="#labo-m0">🏦 3. Pipeline Lanterne</a></div></div>' + radar() + '</section>' +
 
       trackBar() +
 
@@ -225,7 +226,7 @@
       (pv ? '<a class="btn" href="#module-' + pv.id + '">← ' + esc(pv.title) + '</a>' : '') + (nx ? '<a class="btn" href="#module-' + nx.id + '">' + esc(nx.title) + ' →</a>' : '') + '</div>';
   }
   function atelier() {
-    return '<div class="head"><h1>Simulateurs</h1><p class="muted">Quinze mécanismes à manipuler directement dans le navigateur. Chacun a une mission : ' + cnt(S.sims) + ' réussies sur ' + SIMS.length + '.</p></div><div class="list">' +
+    return '<div class="head"><h1>Simulateurs</h1><p class="muted">Dix-sept mécanismes à manipuler directement dans le navigateur. Chacun a une mission : ' + cnt(S.sims) + ' réussies sur ' + SIMS.length + '.</p></div><div class="list">' +
       SIMS.map(s => '<a class="mcard' + (S.sims[s.id] ? ' full' : '') + '" href="#sim-' + s.id + '"><span class="num">' + (S.sims[s.id] ? '✓' : num(mod(s.mod))) + '</span><span><b>' + esc(s.title) + '</b><small>' + esc(s.tag) + '</small></span>' +
         '<span class="pips"><span class="pip">' + esc(mod(s.mod).title) + '</span></span></a>').join('') + '</div>';
   }
@@ -318,32 +319,76 @@
         '<a href="#module-' + m.id + '" style="text-decoration:none;color:inherit"><b>' + esc(m.lab.title) + '</b><small>' + esc(m.title) + ' · ' + m.lab.time + '</small></a>' +
         '<span class="pips"><button class="small" data-nb="' + m.id + '">⬇ .ipynb</button><a class="btn small" href="#module-' + m.id + '">Ouvrir</a></span></div>').join('') + '</div>';
   }
+  const PY_CHEAT = [
+    ['f-string (paramétrer table/SQL)', 'cat = "ventes_dev"\ntbl = f"{cat}.silver.clients"', 'Injecte proprement les variables Python (Driver) dans les noms Unity Catalog ou requêtes SQL.'],
+    ['Liste & déballage (*args)', 'cols = ["id", "nom", "ville"]\ndf.select(*cols)', 'L\'étoile * déballe la liste Python comme si chaque élément était passé en argument séparé.'],
+    ['Boucle for sur les colonnes', 'for c in ["nom", "prenom", "ville"]:\n    df = df.withColumn(c, F.upper(F.trim(F.col(c))))', 'Tourne en 1 ms sur le Driver pour construire le plan Catalyst sans copier-coller.'],
+    ['List comprehension (1 ligne)', 'exprs = [F.upper(F.trim(c)).alias(c) for c in cols]\ndf = df.select("id", *exprs)', 'Alternative ultra-concise à la boucle for pour transformer N colonnes d\'un coup.'],
+    ['Dictionnaire (valeurs par défaut)', 'defauts = {"email": "inconnu@ex.fr", "mt": 0}\ndf = df.fillna(defauts)', 'Associe chaque nom de colonne à sa valeur de remplacement des NULL.'],
+    ['Dictionnaire (renommage)', 'mapping = {"client_id": "id_client"}\ndf = df.withColumnsRenamed(mapping)', 'Renomme proprement un ensemble de colonnes sans toucher aux autres.'],
+    ['Fonction pure (def + return)', 'def nettoyer(df, devise="EUR"):\n    return df.filter(F.col("devise") == devise)\n\ndf_propre = df.transform(nettoyer, "EUR")', 'Structure industrielle : testable avec pytest et chaînable via .transform().'],
+    ['Test unitaire (assert)', 'nb_nulls = df.filter(F.col("id").isNull()).count()\nassert nb_nulls == 0, f"Erreur: {nb_nulls} id nuls"', 'Coupe immédiatement l\'exécution si un contrat de qualité est violé.'],
+    ['Lire un paramètre de Job (widget)', 'dbutils.widgets.text("date_run", "2026-07-01")\ndt = dbutils.widgets.get("date_run")', 'Point d\'entrée standard pour recevoir les paramètres d\'un Lakeflow Job.'],
+    ['Lire un secret Key Vault', 'pwd = dbutils.secrets.get("scope_prod", "sql_pwd")', 'Ne jamais coder un mot de passe en clair ; l\'affichage renvoie toujours [REDACTED].'],
+    ['Passer une valeur entre tâches', 'dbutils.jobs.taskValues.set(key="nb", value=120)\n# Tâche aval :\nnb = dbutils.jobs.taskValues.get("t1", "nb", 0)', 'Permet aux tâches aval ou conditionnelles (If/else) de réagir au résultat amont.'],
+    ['❌ Les 3 interdits Python en Spark', '# 1. JAMAIS : from pyspark.sql.functions import *\n# 2. JAMAIS : for r in df.collect():\n# 3. ÉVITER : @udf Python si F.* existe', '1) Écrase max/sum/min Python. 2) Fait exploser la RAM du Driver. 3) Désactive Photon.']
+  ];
   const SQL_TO_PY = [
     ['Lire une table', 'SELECT * FROM clients', 'df = spark.table("clients")', 'Pointe vers la table sans rien charger en mémoire (lazy).'],
     ['Choisir des colonnes', 'SELECT id, nom FROM t', 'df.select("id", "nom")', 'Un simple texte suffit quand on ne transforme pas la colonne.'],
-    ['Renommer une colonne', 'SELECT nom AS client FROM t', 'df.select(F.col("nom").alias("client"))', '.alias("...") renomme n\'importe quelle expression de colonne.'],
+    ['Renommer une colonne', 'SELECT nom AS client FROM t', 'df.select(F.col("nom").alias("client"))\n# ou df.withColumnRenamed("nom", "client")', '.alias("...") renomme une expression ; .withColumnRenamed renomme sur place.'],
     ['Filtrer (1 condition)', 'WHERE montant > 0', 'df.filter(F.col("montant") > 0)', 'On accepte aussi la syntaxe SQL : df.filter("montant > 0").'],
-    ['Filtrer (ET / OU)', 'WHERE a > 0 AND b = \'EUR\'', 'df.filter((F.col("a") > 0) & (F.col("b") == "EUR"))', 'Parenthèses obligatoires autour de chaque condition avec & et |.'],
+    ['Filtrer (ET / OU / NON)', 'WHERE a > 0 AND b = \'EUR\'', 'df.filter((F.col("a") > 0) & (F.col("b") == "EUR"))', 'Parenthèses obligatoires autour de chaque condition avec & (ET), | (OU), ~ (NON).'],
+    ['Filtrer sur une liste (IN)', 'WHERE devise IN (\'EUR\', \'USD\')', 'df.filter(F.col("devise").isin("EUR", "USD"))', 'Accepte aussi une liste Python : F.col("devise").isin(ma_liste).'],
     ['Tester NULL / NOT NULL', 'WHERE email IS NULL', 'df.filter(F.col("email").isNull())', 'Ou .isNotNull() pour les valeurs présentes.'],
+    ['Remplacer les NULL (COALESCE)', 'COALESCE(email, \'contact@ex.fr\')', 'F.coalesce(F.col("email"), F.lit("contact@ex.fr"))\n# ou df.fillna({"email": "contact@ex.fr"})', 'Attention : enveloppe toujours une constante texte dans F.lit("...").'],
     ['Créer ou remplacer une colonne', 'SELECT *, upper(trim(nom)) AS nom', 'df.withColumn("nom", F.upper(F.trim("nom")))', 'Remplace "nom" si elle existe, sinon l\'ajoute à la fin.'],
+    ['Nettoyer / extraire du texte (Regex)', 'regexp_replace(tel, \'[^0-9]\', \'\')\nsubstring(cp, 1, 2)', 'F.regexp_replace("tel", "[^0-9]", "")\nF.substring("cp", 1, 2)', 'S\'exécute nativement dans Photon sans UDF Python.'],
+    ['Calculs de dates & ancienneté', 'date_trunc(\'month\', ts)\ndatediff(\'2026-07-01\', dt_ouv)', 'F.trunc("ts", "month")\nF.datediff(F.lit("2026-07-01"), F.col("dt_ouv"))', 'F.to_date, F.year, F.month, F.date_add, F.datediff couvrent tous les besoins temporels.'],
     ['Condition CASE WHEN', 'CASE WHEN x > 0 THEN \'OK\' ELSE \'KO\' END', 'F.when(F.col("x") > 0, "OK").otherwise("KO")', 'On peut chaîner plusieurs .when(...) avant .otherwise(...).'],
     ['Supprimer une colonne', 'SELECT * EXCEPT (rejet) FROM t', 'df.drop("rejet")', 'Retire une ou plusieurs colonnes du DataFrame.'],
     ['Dédoublonner', 'SELECT DISTINCT * FROM t', 'df.dropDuplicates()', 'Ou df.dropDuplicates(["id"]) sur une clé précise.'],
     ['Grouper et agréger', 'SELECT seg, count(*) AS n, sum(mt) AS tot\nFROM t GROUP BY seg', 'df.groupBy("seg").agg(\n  F.count("*").alias("n"),\n  F.sum("mt").alias("tot"))', 'Déclenche un Shuffle (Exchange) entre les partitions.'],
     ['Trier', 'ORDER BY tot DESC, seg ASC', 'df.orderBy(F.desc("tot"), F.asc("seg"))', 'Équivalent : .sort(F.desc("tot")).'],
     ['Joindre deux tables', 't JOIN c USING (compte_id)\n-- ou LEFT JOIN', 't.join(c, "compte_id")\nt.join(c, "compte_id", "left")', 'Passer le nom de clé en chaîne évite de dupliquer la colonne.'],
+    ['Joindre une petite table (Broadcast)', 'SELECT /*+ BROADCAST(ag) */ * FROM tx JOIN ag', 'tx.join(F.broadcast(ag), "agence_id")', 'Copie la petite table sur chaque worker : zéro Shuffle de la grande table !'],
     ['Trouver les absents (Anti-join)', 't LEFT ANTI JOIN c USING (compte_id)', 't.join(c, "compte_id", "left_anti")', 'Ne garde que les lignes de t absentes de c (idéal en qualité).'],
     ['Fenêtre (QUALIFY row_number)', 'QUALIFY row_number() OVER (\n  PARTITION BY id ORDER BY dt DESC) = 1', 'w = Window.partitionBy("id").orderBy(F.desc("dt"))\ndf.withColumn("rn", F.row_number().over(w)).filter("rn = 1")', 'Permet de garder la ligne la plus récente par clé avant un MERGE.'],
+    ['Upsert Delta (MERGE INTO)', 'MERGE INTO cible t USING src s\nON t.id = s.id WHEN MATCHED THEN …', 'DeltaTable.forName(spark, "cible").alias("t")\n  .merge(src.alias("s"), "t.id = s.id")\n  .whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()', 'Transaction atomique et idempotente (nécessite une source sans doublons de clé).'],
     ['Écrire une table Delta', 'CREATE OR REPLACE TABLE silver_t AS …', 'df.write.mode("overwrite").saveAsTable("silver_t")', 'C\'est une action : elle déclenche tout le plan et écrit dans Delta.']
   ];
+  const DBX_CHEAT = [
+    ['Nommage 3 niveaux (Unity Catalog)', 'SELECT * FROM prod_finance.silver.transactions;', 'Toujours <catalogue>.<schema>.<objet> (plus jamais de hive_metastore ni /mnt).'],
+    ['Accorder l\'accès de lecture complet', 'GRANT USE CATALOG ON CATALOG prod TO analysts;\nGRANT USE SCHEMA ON SCHEMA prod.gold TO analysts;\nGRANT SELECT ON TABLE prod.gold.ca TO analysts;', 'Il faut les 3 clés pour traverser catalogue → schéma → table.'],
+    ['Créer une table avec Liquid Clustering', 'CREATE TABLE prod.gold.ventes (\n  jour DATE, agence STRING, ca DOUBLE\n) CLUSTER BY (jour, agence);', 'Remplace PARTITIONED BY et ZORDER BY sur toutes les nouvelles tables.'],
+    ['Upsert incrémental (MERGE INTO)', 'MERGE INTO silver.clients c USING lot_jour m ON c.id = m.id\nWHEN MATCHED AND m.suppr THEN DELETE\nWHEN MATCHED THEN UPDATE SET *\nWHEN NOT MATCHED THEN INSERT *;', 'Dédoublonner lot_jour avant le MERGE si plusieurs fichiers sont lus.'],
+    ['Remplacement atomique d\'une période', 'INSERT INTO gold.ca_mensuel\nREPLACE WHERE mois = \'2026-07-01\'\nSELECT mois, sum(mt) FROM silver.tx WHERE mois = \'2026-07-01\' GROUP BY 1;', 'Idéal en Gold pour recalculer un mois ou un jour de façon 100 % idempotente.'],
+    ['Time Travel & Restauration Delta', 'DESCRIBE HISTORY silver.clients;\nSELECT * FROM silver.clients VERSION AS OF 4;\nRESTORE TABLE silver.clients TO VERSION AS OF 4;', 'Permet d\'auditer et d\'annuler instantanément un run corrompu.'],
+    ['Récupérer une table supprimée par erreur', 'UNDROP TABLE prod.silver.clients;', 'Disponible pendant 7 jours sur les tables managées Unity Catalog.'],
+    ['Maintenance & Compaction', 'OPTIMIZE prod.gold.ventes;\nVACUUM prod.gold.ventes; -- rétention 7j par défaut', 'Automatisé en arrière-plan si Predictive Optimization est activé sur le catalogue.'],
+    ['Auto Loader en Python (Batch incrémental)', '(spark.readStream.format("cloudFiles")\n  .option("cloudFiles.format", "json")\n  .option("cloudFiles.schemaLocation", f"{vol}/_schema")\n  .load(f"{vol}/in/")\n .writeStream.option("checkpointLocation", f"{vol}/_chk")\n  .trigger(availableNow=True).toTable("bronze.events"))', 'availableNow=True traite tous les nouveaux fichiers puis éteint le cluster.'],
+    ['Pipeline déclaratif (Lakeflow / DLT)', 'CREATE OR REFRESH MATERIALIZED VIEW silver_tx (\n  CONSTRAINT mt_positif EXPECT (montant > 0) ON VIOLATION DROP ROW\n) AS SELECT * FROM STREAM(bronze_tx);', '3 modes : Tracer (défaut), DROP ROW (écarte), FAIL UPDATE (coupe tout).'],
+    ['Audit FinOps (System Tables)', 'SELECT sku_name, sum(usage_quantity) AS dbus\nFROM system.billing.usage\nWHERE usage_date >= current_date() - 30 GROUP BY 1;', 'Base du suivi des coûts par workspace, job et tag.'],
+    ['Cycle CI/CD Asset Bundles (CLI)', 'databricks bundle validate -t prod\ndatabricks bundle deploy -t prod\ndatabricks bundle run mon_job -t prod', 'Versionné dans databricks.yml, exécuté sous Service Principal en prod.']
+  ];
+  let cheatTab = 'spark';
   function memoView() {
-    return '<div class="head"><h1>Mémo, Dictionnaire PySpark & Playbooks</h1><p class="muted">Le dictionnaire SQL ⇄ PySpark pour partir de zéro, les scénarios d\'architecture en mission client chez Keyrus, le traducteur d\'outils et le glossaire.</p></div>' +
-      '<section class="panel"><div class="hstack between"><div><h2>🐍 Dictionnaire visuel SQL ⇄ PySpark (Partir de zéro)</h2><p class="muted">Tu connais le SQL mais tu débutes en Spark ? Voici la traduction exacte des 16 gestes essentiels.</p></div>' +
-      '<div class="hstack"><a class="btn b-primary" href="#labo-s1">Pratiquer dans l\'École PySpark →</a><a class="btn" href="#sim-pyspark">Simulateur brique par brique</a></div></div>' +
-      '<div class="scroll"><table class="plain"><tr><th>Intention</th><th>En SQL</th><th>En PySpark (DataFrame API)</th><th>Règle à retenir</th></tr>' +
-      SQL_TO_PY.map(r => '<tr><td><b>' + esc(r[0]) + '</b></td><td><code>' + esc(r[1]) + '</code></td><td><code>' + esc(r[2]) + '</code></td><td class="muted">' + esc(r[3]) + '</td></tr>').join('') +
-      '</table></div></section>' +
-      '<section class="panel"><h2>Playbooks d\'architecture en mission (Cas clients Keyrus)</h2><p class="muted">Six situations réelles fréquemment rencontrées en projet ou en entretien technique.</p><div class="list">' +
+    return '<div class="head"><h1>Mémo, Anti-sèches des 3 Piliers & Playbooks</h1><p class="muted">Les anti-sèches opérationnelles (Python Data · SQL ⇄ PySpark · Databricks & Delta), les 8 scénarios d\'architecture en mission client chez Keyrus, le traducteur d\'outils et le glossaire.</p></div>' +
+      '<section class="panel"><div class="hstack between"><div><span class="eyebrow">Référence terrain · Les 3 compétences</span><h2>📚 Anti-sèches opérationnelles : Python · Spark · Databricks</h2><p class="muted">Bascule entre les 3 piliers pour retrouver instantanément la bonne syntaxe en mission.</p></div>' +
+      '<div class="hstack"><a class="btn b-primary" href="#labo-p1">🐍 Pratiquer Python (P1–P4)</a><a class="btn" href="#labo-s1">⚡ Pratiquer Spark (S1–S10)</a></div></div>' +
+      '<div class="seg" role="tablist">' +
+      [['py', '🐍 1. Python pour Data Engineers (12 patterns)'], ['spark', '⚡ 2. Dictionnaire SQL ⇄ PySpark (22 gestes)'], ['dbx', '🧱 3. Databricks, Delta & CLI (12 commandes)']].map(([k, lbl]) => '<button data-cheat="' + k + '" class="' + (cheatTab === k ? 'on' : '') + '">' + lbl + '</button>').join('') +
+      '</div>' +
+      (cheatTab === 'py'
+        ? '<div class="scroll"><table class="plain"><tr><th>Pattern Python Data</th><th>Syntaxe à utiliser sur Databricks</th><th>Pourquoi c\'est vital en mission</th></tr>' +
+          PY_CHEAT.map(r => '<tr><td><b>' + esc(r[0]) + '</b></td><td><pre class="mini" style="margin:0">' + esc(r[1]) + '</pre></td><td class="muted">' + esc(r[2]) + '</td></tr>').join('') + '</table></div>'
+        : cheatTab === 'dbx'
+        ? '<div class="scroll"><table class="plain"><tr><th>Opération Plateforme / Delta</th><th>Commande SQL / PySpark / CLI</th><th>Réflexe terrain</th></tr>' +
+          DBX_CHEAT.map(r => '<tr><td><b>' + esc(r[0]) + '</b></td><td><pre class="mini" style="margin:0">' + esc(r[1]) + '</pre></td><td class="muted">' + esc(r[2]) + '</td></tr>').join('') + '</table></div>'
+        : '<div class="scroll"><table class="plain"><tr><th>Intention</th><th>En SQL</th><th>En PySpark (DataFrame API)</th><th>Règle à retenir</th></tr>' +
+          SQL_TO_PY.map(r => '<tr><td><b>' + esc(r[0]) + '</b></td><td><pre class="mini" style="margin:0">' + esc(r[1]) + '</pre></td><td><pre class="mini" style="margin:0">' + esc(r[2]) + '</pre></td><td class="muted">' + esc(r[3]) + '</td></tr>').join('') + '</table></div>') +
+      '</section>' +
+      '<section class="panel"><h2>Playbooks d\'architecture en mission (Cas clients Keyrus)</h2><p class="muted">Huit situations réelles fréquemment rencontrées en projet ou en entretien technique.</p><div class="list">' +
       (D.playbooks || []).map(p => '<details class="playbook"><summary><b>' + esc(p.title) + '</b> <span class="pill">' + esc(p.tag) + '</span></summary>' +
         '<div class="pb-body"><p><b>Contexte client :</b> ' + p.ctx + '</p><p><b>Diagnostic :</b> ' + p.diag + '</p>' +
         '<div class="note ok"><b>Recommandation Databricks :</b> ' + p.reco + '</div>' +
@@ -417,6 +462,7 @@
     if (t.id === 'clear-peer') { S.comparePeer = null; save(); render(); return; }
     if (d.peer != null) { const idx = +d.peer; S.comparePeer = S.comparePeer === idx ? null : idx; save(); render(); return; }
     if (d.track) { S.track = d.track; save(); render(); return; }
+    if (d.cheat) { cheatTab = d.cheat; render(); return; }
     if (d.fc) { fcMod = d.fc; F = { list: buildDeck(fcMod), i: 0, back: false }; render(); return; }
     if (d.nb) { window.Extras.downloadNotebook(d.nb); return; }
     if (d.copy != null) { const pre = $('code' + d.copy); copyText(pre.textContent, t, 'Copier'); const r = document.createRange(); r.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(r); return; }
